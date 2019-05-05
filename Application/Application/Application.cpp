@@ -46,7 +46,7 @@ DWORD WINAPI OPCClient();	// declaração da função
 DWORD WINAPI SocketServer();	// declaração da função
 
 int main(int argc, char **argv) {
-
+	system("chcp 1252"); // Comando para apresentar caracteres especiais no console
 	DWORD dwReturn,
 		dwExitCode,
 		dwThreadId;
@@ -116,12 +116,14 @@ DWORD WINAPI SocketServer() {
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_protocol = IPPROTO_TCP;
 	hints.ai_flags = AI_PASSIVE;
+
 	status = GetAddrInfo(NULL, LISTENPORT, &hints, &result);
 
 	printf("Criando socket TCP\n");
 	serverSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
 	if (serverSocket == INVALID_SOCKET) {
-		//CheckForError(serverSocket);
+		status = WSAGetLastError();
+		printf("Erro na criação do socket: %d\n",status);
 		WSACleanup();
 		return ERROR;
 	}
@@ -129,7 +131,8 @@ DWORD WINAPI SocketServer() {
 	printf("Vinculando o socket a porta\n");
 	status = bind(serverSocket, result->ai_addr, (int)result->ai_addr);
 	if (status == SOCKET_ERROR) {
-		//CheckForError(status);
+		status = WSAGetLastError();
+		printf("Erro na vinculação do socket: %d\n", status);
 		WSACleanup();
 		return ERROR;
 	}
@@ -139,16 +142,18 @@ DWORD WINAPI SocketServer() {
 	printf("Socket comeca a escutar\n");
 	status = listen(serverSocket, SOMAXCONN);
 	if (status == SOCKET_ERROR) {
-		//CheckForError(status);
+		status = WSAGetLastError();
+		printf("Erro no listening: %d\n", status);
 		closesocket(serverSocket);
 		WSACleanup();
 		return ERROR;
 	}
 
 	printf("Servidor Esperando conexao\n");
-	clientSocket = accept(serverSocket, NULL, NULL);
-	if (clientSocket = INVALID_SOCKET) {
-		//CheckForError(clientSocket);
+	clientSocket = accept(serverSocket,NULL,NULL);
+	if (clientSocket == INVALID_SOCKET) {
+		status = WSAGetLastError();
+		printf("Erro na função accept do socket: %d\n", status);
 		closesocket(serverSocket);
 		WSACleanup();
 		return ERROR;
