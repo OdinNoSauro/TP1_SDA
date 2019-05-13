@@ -15,7 +15,7 @@
 #include "SOCAdviseSink.h"
 #include "SOCWrapperFunctions.h"
 
-//extern UINT OPC_DATA_TIME;
+extern UINT OPC_DATA_TIME;
 
 // Constructor: initializes the reference count to 0.
 SOCAdviseSink::SOCAdviseSink () : m_cRef (0)
@@ -132,7 +132,10 @@ void STDMETHODCALLTYPE SOCAdviseSink::OnDataChange(
 
 	// Check the event that generated the callback. In this example, only data passed
 	// with time stamp is supported.
-	
+	if (pFormatEtc->cfFormat != OPC_DATA_TIME){
+		printf("IAdviseSink::OnDataChange: Unsupported event type %x\n",pFormatEtc->cfFormat);
+		return;
+	}
 
 	// Read the OPC group header:
 	hr = pStream->Read (&groupheader,				// where to put the stream data

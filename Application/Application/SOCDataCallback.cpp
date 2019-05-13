@@ -11,6 +11,7 @@
 #include "SOCDataCallback.h"
 #include "SOCWrapperFunctions.h"
 
+extern UINT OPC_DATA_TIME;
 
 //	Constructor.  Reference count is initialized to zero.
 SOCDataCallback::SOCDataCallback () : m_cnRef (0)

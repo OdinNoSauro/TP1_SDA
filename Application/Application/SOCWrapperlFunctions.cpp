@@ -11,6 +11,7 @@
 #include "opcda.h"
 #include "SOCAdviseSink.h"
 
+extern UINT OPC_DATA_TIME; // Defined in "SimpleOPCClient.cpp"
 
 //////////////////////////////////////////////////////////////////////////////
 // Set the group state to ACTIVE
@@ -62,7 +63,7 @@ void SetAdviseSink(IUnknown* pGroupIUnknown,
     FORMATETC Fmt;
     
 	//fill the data structure relevant to IDataObject::DAdvise
-	//Fmt.cfFormat = OPC_DATA_TIME;
+	Fmt.cfFormat = OPC_DATA_TIME;
     Fmt.dwAspect = DVASPECT_CONTENT;
     Fmt.ptd = NULL;
     Fmt.tymed = TYMED_HGLOBAL;
@@ -122,39 +123,39 @@ bool VarToStr (VARIANT pvar, char *buffer)
 	{
         case VT_BOOL:
 		case VT_I1:
-			printf(buffer, "%d",    pvar.iVal);	break;
+			sprintf(buffer, "%d",    pvar.iVal);	break;
 			// RAFAEL sprintf(buffer, "%06d",    pvar.iVal);	break;
 		case VT_I2:
-			printf(buffer, "%d",    pvar.intVal);	break;
+			sprintf(buffer, "%d",    pvar.intVal);	break;
 			// RAFAEL sprintf(buffer, "%06d",    pvar.intVal);	break;
 		case VT_I4:
-			printf(buffer, "%ld",   pvar.intVal);	break;
+			sprintf(buffer, "%ld",   pvar.intVal);	break;
 			//RAFAEL sprintf(buffer, "%06d",   pvar.intVal);	break;
 		case VT_UI1:
 			//sprintf(buffer, "%u",    pvar.uiVal);	break;
-			printf(buffer, "%06u",    pvar.uiVal);	break;
+			sprintf(buffer, "%06u",    pvar.uiVal);	break;
 		case VT_UI2:
-			printf(buffer, "%u",    pvar.ulVal);	break;
+			sprintf(buffer, "%u",    pvar.ulVal);	break;
 			//RAFAEL sprintf(buffer, "%06u",    pvar.ulVal);	break;
 		case VT_UI4:
-			printf(buffer, "%lu",   pvar.ulVal);	break;
+			sprintf(buffer, "%lu",   pvar.ulVal);	break;
 			//RAFAEL sprintf(buffer, "%06u",   pvar.ulVal);	break;
 		case VT_R4:
-			printf(buffer, "%6.2f", pvar.fltVal);	break;
+			sprintf(buffer, "%6.2f", pvar.fltVal);	break;
 			//RAFAEL sprintf(buffer, "%06.1f", pvar.fltVal);	break;
 		case VT_R8:
 			//LUIZ sprintf(buffer, "%lu",   pvar.dblVal);	break;
-			printf(buffer, "%lf",   pvar.dblVal);	break;
+			sprintf(buffer, "%lf",   pvar.dblVal);	break;
 			//RAFAEL sprintf(buffer, "%06.1Lf",   pvar.dblVal);	break;
 		case VT_BSTR:
 			//ORIGINAL sprintf(buffer, "%s",    pvar.bstrVal);	break;
 			//Modificação abaixo para o VS Community
-			printf(buffer, "%ls", pvar.bstrVal);	break;
+			sprintf(buffer, "%ls", pvar.bstrVal);	break;
 			//RAFAEL sprintf(buffer, "%6.6s",    pvar.bstrVal);	break;
 		default:
 			//sprintf(buffer, "%s", NULL);
 			//Modificação abaixo para o VS Community
-			printf(buffer, "%s", (char *) NULL);
+			sprintf(buffer, "%s", (char *) NULL);
 			vReturn = false;
 			break;
 	}
