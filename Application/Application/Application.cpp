@@ -1,6 +1,5 @@
 // Application.cpp : Este arquivo contém a função 'main'. A execução do programa começa e termina ali.
 
-
 using namespace std;
 
 #include <winsock2.h>
@@ -10,7 +9,7 @@ using namespace std;
 #include <iostream>     // std::cout, std::ostream, std::ios
 #include <sstream>
 #include <process.h>	// _beginthreadex() e _endthreadex() 
-#include <iomanip> // needed to use manipulators with parameters (precision, width)
+#include <iomanip>      // needed to use manipulators with parameters (precision, width)
 #include <atlbase.h>    // required for using the "_T" macro
 #include <iostream>
 #include <ObjIdl.h>
@@ -20,13 +19,13 @@ using namespace std;
 #include "SOCAdviseSink.h"
 #include "SOCWrapperFunctions.h"
 
-
 // Casting para terceiro e sexto parâmetros da função _beginthreadex
 typedef unsigned (WINAPI *CAST_FUNCTION)(LPVOID);
 typedef unsigned *CAST_LPDWORD;
 
 wchar_t OPC_SERVER_NAME[] = L"Matrikon.OPC.Simulation.1";
 wchar_t ITEM_ID[] = L"Saw-toothed Waves.Real4";
+const wchar_t* ITEMS_ID[] = { L"Random.UInt1", L"Random.UInt2", L"Random.Real4", L"Random.Saw-toothed Waves", L"Bucket Brigade.UInt2", L"Bucket Brigade.Real4", L"Bucket Brigade.UInt4" };
 
 #define VT VT_R4
 #define	LISTENPORT "3980"
@@ -37,8 +36,6 @@ wchar_t ITEM_ID[] = L"Saw-toothed Waves.Real4";
 #define PARAMETERSMSG "00"
 #define BUFFERLEN 45
 #define VT VT_R4
-
-
 #define EXITERROR -1
 #define EXITSUCESS 0 
 
@@ -58,21 +55,18 @@ float temperatureSetPoint,
 	  reservatoryPressure= 5.22f,
 	  reservatoryLevel = 3.25f;
 			
-
 UINT OPC_DATA_TIME = RegisterClipboardFormat(_T("OPCSTMFORMATDATATIME"));
 
-DWORD WINAPI OPCClient();	// declaração da função
+DWORD WINAPI OPCClient();	    // declaração da função
 DWORD WINAPI SocketServer();	// declaração da função
 int increaseSequenceNumber(int previousSequenceNumber);
 IOPCServer *InstantiateServer(wchar_t ServerName[]);
-void AddTheGroup(IOPCServer* pIOPCServer, IOPCItemMgt* &pIOPCItemMgt,
-	OPCHANDLE& hServerGroup);
+void AddTheGroup(IOPCServer* pIOPCServer, IOPCItemMgt* &pIOPCItemMgt, OPCHANDLE& hServerGroup);
 void AddTheItem(IOPCItemMgt* pIOPCItemMgt, OPCHANDLE& hServerItem);
+void AddAllItems(IOPCItemMgt* pIOPCItemMgt, OPCHANDLE* hServerItem);
 void ReadItem(IUnknown* pGroupIUnknown, OPCHANDLE hServerItem, VARIANT& varValue);
 void RemoveItem(IOPCItemMgt* pIOPCItemMgt, OPCHANDLE hServerItem);
 void RemoveGroup(IOPCServer* pIOPCServer, OPCHANDLE hServerGroup);
-
-
 
 int main(int argc, char **argv) {
 	DWORD dwReturn,
@@ -98,13 +92,9 @@ int main(int argc, char **argv) {
 		(CAST_LPDWORD)&dwThreadId	// casting necessário
 	);*/
 
-	
-
 	//const HANDLE pointerHandles[2] = { hOPCClientThread, hSockerServerThread};
 	//dwReturn = WaitForMultipleObjects(2, pointerHandles, true, INFINITE);
 	dwReturn = WaitForSingleObject(hOPCClientThread, INFINITE);
-
-
 
 	CloseHandle(hMutex);
 
@@ -116,15 +106,13 @@ int main(int argc, char **argv) {
 	return 0;
 }
 
-
-
 DWORD WINAPI OPCClient() {
 
 	IOPCServer* pIOPCServer = NULL;   //pointer to IOPServer interface
 	IOPCItemMgt* pIOPCItemMgt = NULL; //pointer to IOPCItemMgt interface
 
-	OPCHANDLE hServerGroup; // server handle to the group
-	OPCHANDLE hServerItem;  // server handle to the item
+	OPCHANDLE hServerGroup;    // server handle to the group
+	OPCHANDLE hServerItem[7];  // server handle to the item
 
 	char buf[100];
 
@@ -146,15 +134,14 @@ DWORD WINAPI OPCClient() {
 	size_t m;
 	wcstombs_s(&m, buf, 100, ITEM_ID, _TRUNCATE);
 	printf("Adding the item %s to the group...\n", buf);
-	AddTheItem(pIOPCItemMgt, hServerItem);
-
+	AddAllItems(pIOPCItemMgt, hServerItem);
 	
 	int bRet;
 	MSG msg;
 	DWORD ticks1, ticks2;
 	ticks1 = GetTickCount();
 	
-	// Establish a callback asynchronous read by means of the IOPCDaraCallback
+	// Establish a callback asynchronous read by means of the IOPCDataCallback
 	// (OPC DA 2.0) method. We first instantiate a new SOCDataCallback object and
 	// adjusts its reference count, and then call a wrapper function to
 	// setup the callback.
@@ -174,7 +161,6 @@ DWORD WINAPI OPCClient() {
 	// Enter again a message pump in order to process the server´s callback
 	// notifications, for the same reason explained before.
 
-	ticks1 = GetTickCount();
 	printf("Waiting for IOPCDataCallback notifications during 10 seconds...\n");
 	do {
 		bRet = GetMessage(&msg, NULL, 0, 0);
@@ -182,10 +168,13 @@ DWORD WINAPI OPCClient() {
 			printf("Failed to get windows message! Error code = %d\n", GetLastError());
 			exit(0);
 		}
+		WaitForSingleObject(hMutex, INFINITE);
+		pSOCDataCallback->updateData(&tubePressure, &tubeTemperature, &reservatoryLevel, &reservatoryPressure);
+		printf("Mensagem da dados do servidor OPC: %05i/%05i/%.2f/%.2f", tubePressure, tubeTemperature, reservatoryPressure, reservatoryLevel);
+		ReleaseMutex(hMutex);
 		TranslateMessage(&msg); // This call is not really needed ...
 		DispatchMessage(&msg);  // ... but this one is!
-		ticks2 = GetTickCount();
-	} while ((ticks2 - ticks1) < 10000);
+	} while (true);
 
 	// Cancel the callback and release its reference
 	printf("Cancelling the IOPCDataCallback notifications...\n");
@@ -195,7 +184,9 @@ DWORD WINAPI OPCClient() {
 
 	// Remove the OPC item:
 	printf("Removing the OPC item...\n");
-	RemoveItem(pIOPCItemMgt, hServerItem);
+	for (int i = 0; i < 7; i++)	{
+		RemoveItem(pIOPCItemMgt, hServerItem[i]);
+	}
 
 	// Remove the OPC group:
 	printf("Removing the OPC group object...\n");
@@ -213,8 +204,6 @@ DWORD WINAPI OPCClient() {
 	return 0;
 }
 
-
-
 DWORD WINAPI SocketServer() {
 	WSADATA     wsaData;
 	SOCKET serverSocket;
@@ -230,7 +219,7 @@ DWORD WINAPI SocketServer() {
 	
 	status = WSAStartup(MAKEWORD(2, 2), &wsaData);
 	if (status < 0) {
-		printf("Erro na inicizalização do ambiente WSA: %d\n",status);
+		printf("Erro na inicizalização do ambiente WSA: %d\n", status);
 		return EXITERROR;
 	
 	}
@@ -248,7 +237,7 @@ DWORD WINAPI SocketServer() {
 	serverSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
 	if (serverSocket == INVALID_SOCKET) {
 		status = WSAGetLastError();
-		printf("Erro na criação do socket: %d\n",status);
+		printf("Erro na criação do socket: %d\n", status);
 		WSACleanup();
 		return EXITERROR;
 	}
@@ -284,7 +273,6 @@ DWORD WINAPI SocketServer() {
 		return EXITERROR;
 	}
 	
-
 	do {
 		response = recv(clientSocket, buffer, BUFFERLEN, 0);
 
@@ -303,7 +291,7 @@ DWORD WINAPI SocketServer() {
 				_gcvt_s(resLevel, 10, reservatoryLevel, 5);
 				
 				int i;
-				while ((i=strlen(resPressure))<6) {
+				while ((i = strlen(resPressure)) < 6) {
 					resPressure[i] = '0';
 					resPressure[i+1] = '\0';
 				}
@@ -312,7 +300,7 @@ DWORD WINAPI SocketServer() {
 					resLevel[i] = '0';
 					resLevel[i + 1] = '\0';
 				}
-				sprintf_s(buffer, "%s/%06i/%05i/%05i/%s/%s", DATAMSG,sequenceNumber, tubePressure, tubeTemperature, resPressure,resLevel);
+				sprintf_s(buffer, "%s/%06i/%05i/%05i/%s/%s", DATAMSG, sequenceNumber, tubePressure, tubeTemperature, resPressure, resLevel);
 				ReleaseMutex(hMutex);
 
 				printf("Mensagem com dados enviada: %s\n", buffer);
@@ -332,7 +320,7 @@ DWORD WINAPI SocketServer() {
 
 				WaitForSingleObject(hMutex, INFINITE);
 				sequenceNumber = increaseSequenceNumber(std::stoi(str.substr(3, 8)));
-				pressureSetPoint =  std::stoi(str.substr(10,14));
+				pressureSetPoint =  std::stoi(str.substr(10, 14));
 				temperatureSetPoint = std::stoi(str.substr(16, 21));
 				gasVolume = std::stoi(str.substr(23, 27));
 				sprintf_s(buffer, "%s/%06i", ACKCODE, sequenceNumber);
@@ -351,7 +339,6 @@ DWORD WINAPI SocketServer() {
 			else {
 				printf("Strcmp deu errado");
 			}
-
 		}
 		else if (response == 0) {
 			printf("Encerrando a conexao\n");
@@ -378,9 +365,9 @@ DWORD WINAPI SocketServer() {
 			}
 			response = 1;
 		}
-	} while (response >0);
+	} while (response > 0);
 
-	// Desailtando o Socket
+	// Desabilitando o Socket
 	status = shutdown(clientSocket, SD_SEND);
 	if (status == SOCKET_ERROR) {
 		printf("Shutdown falhou: %d\n", WSAGetLastError());
@@ -413,8 +400,7 @@ IOPCServer* InstantiateServer(wchar_t ServerName[])
 	hr = CLSIDFromString(ServerName, &CLSID_OPCServer);
 	_ASSERT(!FAILED(hr));
 
-
-	//queue of the class instances to create
+	// queue of the class instances to create
 	LONG cmq = 1; // nbr of class instance to create.
 	MULTI_QI queue[1] =
 	{ {&IID_IOPCServer,
@@ -438,7 +424,6 @@ IOPCServer* InstantiateServer(wchar_t ServerName[])
 	// return a pointer to the IOPCServer interface:
 	return(IOPCServer*)queue[0].pItf;
 }
-
 
 /////////////////////////////////////////////////////////////////////
 // Add group "Group1" to the Server whose IOPCServer interface
@@ -466,7 +451,6 @@ void AddTheGroup(IOPCServer* pIOPCServer, IOPCItemMgt* &pIOPCItemMgt,
 		/*ppUnk*/ (IUnknown**)&pIOPCItemMgt);
 	_ASSERT(!FAILED(hr));
 }
-
 
 
 //////////////////////////////////////////////////////////////////
@@ -514,6 +498,49 @@ void AddTheItem(IOPCItemMgt* pIOPCItemMgt, OPCHANDLE& hServerItem)
 	CoTaskMemFree(pErrors);
 	pErrors = NULL;
 }
+
+void AddAllItems(IOPCItemMgt* pIOPCItemMgt, OPCHANDLE* hServerItem)
+{
+	HRESULT hr; 
+	OPCITEMDEF ItemArray[7];
+	for (int i = 0; i < 7; i++) {
+		// Array of items to add:
+		ItemArray[i] = {
+			/*szAccessPath*/(LPWSTR)L"",
+			/*szItemID*/ (LPWSTR)ITEMS_ID[i],
+			/*bActive*/ TRUE,
+			/*hClient*/ i + 1,
+			/*dwBlobSize*/ 0,
+			/*pBlob*/ NULL,
+			/*vtRequestedDataType*/ VT,
+			/*wReserved*/0
+		};
+	}
+	//Add Result:
+	OPCITEMRESULT* pAddResult = NULL;
+	HRESULT* pErrors = NULL;
+
+	// Add an Item to the previous Group:
+	hr = pIOPCItemMgt->AddItems(7, ItemArray, &pAddResult, &pErrors);
+	if (hr != S_OK) {
+		printf("Failed call to AddItems function. Error code = %x\n", hr);
+		exit(0);
+	}
+	for (int i = 0; i < 7; i++) {
+		// Server handle for the added item:
+		hServerItem[i] = pAddResult[i].hServer;
+	}
+
+	// release memory allocated by the server:
+	CoTaskMemFree(pAddResult->pBlob);
+
+	CoTaskMemFree(pAddResult);
+	pAddResult = NULL;
+
+	CoTaskMemFree(pErrors);
+	pErrors = NULL;	
+}
+
 
 ///////////////////////////////////////////////////////////////////////////////
 // Read from device the value of the item having the "hServerItem" server 

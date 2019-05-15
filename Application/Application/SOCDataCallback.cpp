@@ -189,3 +189,9 @@ HRESULT STDMETHODCALLTYPE SOCDataCallback::OnCancelComplete(
 {
 	return(S_OK);
 }
+void  SOCDataCallback::updateData(unsigned int* tubePresure, unsigned int* tubeTemperature, float* reservatoryLevel, float* reservatoryPressure) {
+	*tubePresure = this->tubePressure;
+	*tubeTemperature = this->tubeTemperature;
+	*reservatoryLevel = this->reservatoryLevel;
+	*reservatoryPressure = this->reservatoryPressure;
+}
