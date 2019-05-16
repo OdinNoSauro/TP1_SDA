@@ -5,7 +5,10 @@ using namespace std;
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <string>
+#include <windows.h>
+#include <tchar.h>
 #include <stdio.h>
+#include <strsafe.h>
 #include <iostream>     // std::cout, std::ostream, std::ios
 #include <sstream>
 #include <process.h>	// _beginthreadex() e _endthreadex() 
@@ -18,16 +21,17 @@ using namespace std;
 #include "SOCDataCallback.h"
 #include "SOCAdviseSink.h"
 #include "SOCWrapperFunctions.h"
+#include "OPCFunctions.h"
+
 
 // Casting para terceiro e sexto parâmetros da função _beginthreadex
 typedef unsigned (WINAPI *CAST_FUNCTION)(LPVOID);
 typedef unsigned *CAST_LPDWORD;
 
-wchar_t OPC_SERVER_NAME[] = L"Matrikon.OPC.Simulation.1";
-wchar_t ITEM_ID[] = L"Saw-toothed Waves.Real4";
-const wchar_t* ITEMS_ID[] = { L"Random.UInt1", L"Random.UInt2", L"Random.Real4", L"Random.Saw-toothed Waves", L"Bucket Brigade.UInt2", L"Bucket Brigade.Real4", L"Bucket Brigade.UInt4" };
+HANDLE hSlot;
+LPTSTR SlotName = (LPTSTR)TEXT("\\\\.\\mailslot\\sample_mailslot");
 
-#define VT VT_R4
+
 #define	LISTENPORT "3980"
 #define TAMBUF  "20"
 #define ACKCODE "33"
@@ -35,7 +39,6 @@ const wchar_t* ITEMS_ID[] = { L"Random.UInt1", L"Random.UInt2", L"Random.Real4",
 #define DATAMSG "11"
 #define PARAMETERSMSG "00"
 #define BUFFERLEN 45
-#define VT VT_R4
 #define EXITERROR -1
 #define EXITSUCESS 0 
 
@@ -43,6 +46,7 @@ const wchar_t* ITEMS_ID[] = { L"Random.UInt1", L"Random.UInt2", L"Random.Real4",
 
 HANDLE hOPCClientThread,
 	   hSockerServerThread,
+	   hEvent,
 	   hMutex;
 
 unsigned int sequenceNumber, 
@@ -60,19 +64,25 @@ UINT OPC_DATA_TIME = RegisterClipboardFormat(_T("OPCSTMFORMATDATATIME"));
 DWORD WINAPI OPCClient();	    // declaração da função
 DWORD WINAPI SocketServer();	// declaração da função
 int increaseSequenceNumber(int previousSequenceNumber);
-IOPCServer *InstantiateServer(wchar_t ServerName[]);
-void AddTheGroup(IOPCServer* pIOPCServer, IOPCItemMgt* &pIOPCItemMgt, OPCHANDLE& hServerGroup);
-void AddTheItem(IOPCItemMgt* pIOPCItemMgt, OPCHANDLE& hServerItem);
-void AddAllItems(IOPCItemMgt* pIOPCItemMgt, OPCHANDLE* hServerItem);
-void ReadItem(IUnknown* pGroupIUnknown, OPCHANDLE hServerItem, VARIANT& varValue);
-void RemoveItem(IOPCItemMgt* pIOPCItemMgt, OPCHANDLE hServerItem);
-void RemoveGroup(IOPCServer* pIOPCServer, OPCHANDLE hServerGroup);
+BOOL ReadSlot();
+
+
 
 int main(int argc, char **argv) {
 	DWORD dwReturn,
 		dwExitCode,
 		dwThreadId;
 	hMutex = CreateMutex(NULL, FALSE, (LPCWSTR)"DataMutex");
+	hEvent = CreateEvent(NULL, TRUE, FALSE, (LPCWSTR)"ParametersReceiverEvent");
+	hSlot = CreateMailslot(SlotName,
+		0,                             // no maximum message size 
+		MAILSLOT_WAIT_FOREVER,         // no time-out for operations 
+		NULL); // default security
+
+	if (hSlot == INVALID_HANDLE_VALUE)
+	{
+		printf("CreateMailslot failed with %d\n", GetLastError());
+	}
 
 	hOPCClientThread = (HANDLE)_beginthreadex(
 		NULL,
@@ -83,18 +93,17 @@ int main(int argc, char **argv) {
 		(CAST_LPDWORD)&dwThreadId	// casting necessário
 	);
 
-	/*hSockerServerThread = (HANDLE)_beginthreadex(
+	hSockerServerThread = (HANDLE)_beginthreadex(
 		NULL,
 		0,
 		(CAST_FUNCTION)SocketServer,	// casting necessário
 		NULL,
 		0,
 		(CAST_LPDWORD)&dwThreadId	// casting necessário
-	);*/
+	);
 
-	//const HANDLE pointerHandles[2] = { hOPCClientThread, hSockerServerThread};
-	//dwReturn = WaitForMultipleObjects(2, pointerHandles, true, INFINITE);
-	dwReturn = WaitForSingleObject(hOPCClientThread, INFINITE);
+	const HANDLE pointerHandles[2] = { hOPCClientThread, hSockerServerThread};
+	dwReturn = WaitForMultipleObjects(2, pointerHandles, true, INFINITE);
 
 	CloseHandle(hMutex);
 
@@ -114,7 +123,13 @@ DWORD WINAPI OPCClient() {
 	OPCHANDLE hServerGroup;    // server handle to the group
 	OPCHANDLE hServerItem[7];  // server handle to the item
 
+	DWORD dwReturn,
+		dwExitCode,
+		dwThreadId;
+
 	char buf[100];
+	VARIANT tempVariant;
+	VariantInit(&tempVariant);
 
 	// Have to be done before using microsoft COM library:
 	printf("Initializing the COM environment...\n");
@@ -122,7 +137,7 @@ DWORD WINAPI OPCClient() {
 
 	// Let's instantiante the IOPCServer interface and get a pointer of it:
 	printf("Instantiating the MATRIKON OPC Server for Simulation...\n");
-	pIOPCServer = InstantiateServer(OPC_SERVER_NAME);
+	pIOPCServer = InstantiateServer();
 
 	// Add the OPC group the OPC server and get an handle to the IOPCItemMgt
 	//interface:
@@ -131,15 +146,11 @@ DWORD WINAPI OPCClient() {
 
 	// Add the OPC item. First we have to convert from wchar_t* to char*
 	// in order to print the item name in the console.
-	size_t m;
-	wcstombs_s(&m, buf, 100, ITEM_ID, _TRUNCATE);
-	printf("Adding the item %s to the group...\n", buf);
 	AddAllItems(pIOPCItemMgt, hServerItem);
 	
 	int bRet;
 	MSG msg;
-	DWORD ticks1, ticks2;
-	ticks1 = GetTickCount();
+	int ticks1, ticks2;
 	
 	// Establish a callback asynchronous read by means of the IOPCDataCallback
 	// (OPC DA 2.0) method. We first instantiate a new SOCDataCallback object and
@@ -160,20 +171,27 @@ DWORD WINAPI OPCClient() {
 
 	// Enter again a message pump in order to process the server´s callback
 	// notifications, for the same reason explained before.
-
-	printf("Waiting for IOPCDataCallback notifications during 10 seconds...\n");
+	ticks1 = GetTickCount();
 	do {
+		
 		bRet = GetMessage(&msg, NULL, 0, 0);
 		if (!bRet) {
 			printf("Failed to get windows message! Error code = %d\n", GetLastError());
 			exit(0);
 		}
-		WaitForSingleObject(hMutex, INFINITE);
-		pSOCDataCallback->updateData(&tubePressure, &tubeTemperature, &reservatoryLevel, &reservatoryPressure);
-		printf("Mensagem da dados do servidor OPC: %05i/%05i/%.2f/%.2f", tubePressure, tubeTemperature, reservatoryPressure, reservatoryLevel);
-		ReleaseMutex(hMutex);
 		TranslateMessage(&msg); // This call is not really needed ...
 		DispatchMessage(&msg);  // ... but this one is!
+		ReadSlot();
+		int st = WaitForSingleObject(hEvent, 100);
+		if (st == WAIT_OBJECT_0) {
+			printf("Event received.\n");
+			WaitForSingleObject(hMutex, INFINITE);
+			
+			ReleaseMutex(hMutex);
+		}
+		ResetEvent(hEvent);
+		
+		
 	} while (true);
 
 	// Cancel the callback and release its reference
@@ -325,6 +343,7 @@ DWORD WINAPI SocketServer() {
 				gasVolume = std::stoi(str.substr(23, 27));
 				sprintf_s(buffer, "%s/%06i", ACKCODE, sequenceNumber);
 				ReleaseMutex(hMutex);
+				SetEvent(hEvent);
 
 				printf("Mensagem ACK enviada: %s\n", buffer);
 				status = send(clientSocket, buffer, strlen(buffer), 0);
@@ -391,223 +410,124 @@ int increaseSequenceNumber(int previousSequenceNumber) {
 		return previousSequenceNumber + 1;
 }
 
-IOPCServer* InstantiateServer(wchar_t ServerName[])
+
+
+BOOL ReadSlot()
 {
-	CLSID CLSID_OPCServer;
-	HRESULT hr;
+	DWORD cbMessage, cMessage, cbRead;
+	BOOL fResult;
+	LPTSTR lpszBuffer;
+	TCHAR achID[80];
+	DWORD cAllMessages;
+	HANDLE hEvent;
+	OVERLAPPED ov;
 
-	// get the CLSID from the OPC Server Name:
-	hr = CLSIDFromString(ServerName, &CLSID_OPCServer);
-	_ASSERT(!FAILED(hr));
+	cbMessage = cMessage = cbRead = 0;
 
-	// queue of the class instances to create
-	LONG cmq = 1; // nbr of class instance to create.
-	MULTI_QI queue[1] =
-	{ {&IID_IOPCServer,
-	NULL,
-	0} };
+	hEvent = CreateEvent(NULL, FALSE, FALSE, TEXT("ExampleSlot"));
+	if (NULL == hEvent)
+		return FALSE;
+	ov.Offset = 0;
+	ov.OffsetHigh = 0;
+	ov.hEvent = hEvent;
 
-	//Server info:
-	//COSERVERINFO CoServerInfo =
-	//{
-	//	/*dwReserved1*/ 0,
-	//	/*pwszName*/ REMOTE_SERVER_NAME,
-	//	/*COAUTHINFO*/  NULL,
-	//	/*dwReserved2*/ 0
-	//}; 
+	fResult = GetMailslotInfo(hSlot, // mailslot handle 
+		(LPDWORD)NULL,               // no maximum message size 
+		&cbMessage,                   // size of next message 
+		&cMessage,                    // number of messages 
+		(LPDWORD)NULL);              // no read time-out 
 
-	// create an instance of the IOPCServer
-	hr = CoCreateInstanceEx(CLSID_OPCServer, NULL, CLSCTX_SERVER,
-		/*&CoServerInfo*/NULL, cmq, queue);
-	_ASSERT(!hr);
-
-	// return a pointer to the IOPCServer interface:
-	return(IOPCServer*)queue[0].pItf;
-}
-
-/////////////////////////////////////////////////////////////////////
-// Add group "Group1" to the Server whose IOPCServer interface
-// is pointed by pIOPCServer. 
-// Returns a pointer to the IOPCItemMgt interface of the added group
-// and a server opc handle to the added group.
-//
-void AddTheGroup(IOPCServer* pIOPCServer, IOPCItemMgt* &pIOPCItemMgt,
-	OPCHANDLE& hServerGroup)
-{
-	DWORD dwUpdateRate = 0;
-	OPCHANDLE hClientGroup = 0;
-
-	// Add an OPC group and get a pointer to the IUnknown I/F:
-	HRESULT hr = pIOPCServer->AddGroup(/*szName*/ L"Group1",
-		/*bActive*/ FALSE,
-		/*dwRequestedUpdateRate*/ 1000,
-		/*hClientGroup*/ hClientGroup,
-		/*pTimeBias*/ 0,
-		/*pPercentDeadband*/ 0,
-		/*dwLCID*/0,
-		/*phServerGroup*/&hServerGroup,
-		&dwUpdateRate,
-		/*riid*/ IID_IOPCItemMgt,
-		/*ppUnk*/ (IUnknown**)&pIOPCItemMgt);
-	_ASSERT(!FAILED(hr));
-}
-
-
-//////////////////////////////////////////////////////////////////
-// Add the Item ITEM_ID to the group whose IOPCItemMgt interface
-// is pointed by pIOPCItemMgt pointer. Return a server opc handle
-// to the item.
-
-void AddTheItem(IOPCItemMgt* pIOPCItemMgt, OPCHANDLE& hServerItem)
-{
-	HRESULT hr;
-
-	// Array of items to add:
-	OPCITEMDEF ItemArray[1] =
-	{ {
-			/*szAccessPath*/(LPWSTR) L"",
-			/*szItemID*/ ITEM_ID,
-			/*bActive*/ TRUE,
-			/*hClient*/ 1,
-			/*dwBlobSize*/ 0,
-			/*pBlob*/ NULL,
-			/*vtRequestedDataType*/ VT,
-			/*wReserved*/0
-			} };
-
-	//Add Result:
-	OPCITEMRESULT* pAddResult = NULL;
-	HRESULT* pErrors = NULL;
-
-	// Add an Item to the previous Group:
-	hr = pIOPCItemMgt->AddItems(1, ItemArray, &pAddResult, &pErrors);
-	if (hr != S_OK) {
-		printf("Failed call to AddItems function. Error code = %x\n", hr);
-		exit(0);
+	if (!fResult)
+	{
+		printf("GetMailslotInfo failed with %d.\n", GetLastError());
+		return FALSE;
 	}
 
-	// Server handle for the added item:
-	hServerItem = pAddResult[0].hServer;
-
-	// release memory allocated by the server:
-	CoTaskMemFree(pAddResult->pBlob);
-
-	CoTaskMemFree(pAddResult);
-	pAddResult = NULL;
-
-	CoTaskMemFree(pErrors);
-	pErrors = NULL;
-}
-
-void AddAllItems(IOPCItemMgt* pIOPCItemMgt, OPCHANDLE* hServerItem)
-{
-	HRESULT hr; 
-	OPCITEMDEF ItemArray[7];
-	for (int i = 0; i < 7; i++) {
-		// Array of items to add:
-		ItemArray[i] = {
-			/*szAccessPath*/(LPWSTR)L"",
-			/*szItemID*/ (LPWSTR)ITEMS_ID[i],
-			/*bActive*/ TRUE,
-			/*hClient*/ i + 1,
-			/*dwBlobSize*/ 0,
-			/*pBlob*/ NULL,
-			/*vtRequestedDataType*/ VT,
-			/*wReserved*/0
-		};
-	}
-	//Add Result:
-	OPCITEMRESULT* pAddResult = NULL;
-	HRESULT* pErrors = NULL;
-
-	// Add an Item to the previous Group:
-	hr = pIOPCItemMgt->AddItems(7, ItemArray, &pAddResult, &pErrors);
-	if (hr != S_OK) {
-		printf("Failed call to AddItems function. Error code = %x\n", hr);
-		exit(0);
-	}
-	for (int i = 0; i < 7; i++) {
-		// Server handle for the added item:
-		hServerItem[i] = pAddResult[i].hServer;
+	if (cbMessage == MAILSLOT_NO_MESSAGE)
+	{
+		printf("Waiting for a message...\n");
+		return TRUE;
 	}
 
-	// release memory allocated by the server:
-	CoTaskMemFree(pAddResult->pBlob);
+	cAllMessages = cMessage;
 
-	CoTaskMemFree(pAddResult);
-	pAddResult = NULL;
+	while (cMessage != 0)  // retrieve all messages
+	{
+		// Create a message-number string. 
 
-	CoTaskMemFree(pErrors);
-	pErrors = NULL;	
-}
+		StringCchPrintf((LPTSTR)achID,
+			80,
+			TEXT("\nMessage #%d of %d\n"),
+			cAllMessages - cMessage + 1,
+			cAllMessages);
 
+		// Allocate memory for the message. 
 
-///////////////////////////////////////////////////////////////////////////////
-// Read from device the value of the item having the "hServerItem" server 
-// handle and belonging to the group whose one interface is pointed by
-// pGroupIUnknown. The value is put in varValue. 
-//
-void ReadItem(IUnknown* pGroupIUnknown, OPCHANDLE hServerItem, VARIANT& varValue)
-{
-	// value of the item:
-	OPCITEMSTATE* pValue = NULL;
+		lpszBuffer = (LPTSTR)GlobalAlloc(GPTR,
+			lstrlen((LPTSTR)achID) * sizeof(TCHAR) + cbMessage);
+		if (NULL == lpszBuffer)
+			return FALSE;
+		lpszBuffer[0] = '\0';
 
-	//get a pointer to the IOPCSyncIOInterface:
-	IOPCSyncIO* pIOPCSyncIO;
-	pGroupIUnknown->QueryInterface(__uuidof(pIOPCSyncIO), (void**)&pIOPCSyncIO);
+		fResult = ReadFile(hSlot,
+			lpszBuffer,
+			cbMessage,
+			&cbRead,
+			&ov);
 
-	// read the item value from the device:
-	HRESULT* pErrors = NULL; //to store error code(s)
-	HRESULT hr = pIOPCSyncIO->Read(OPC_DS_DEVICE, 1, &hServerItem, &pValue, &pErrors);
-	_ASSERT(!hr);
-	_ASSERT(pValue != NULL);
+		if (!fResult)
+		{
+			printf("ReadFile failed with %d.\n", GetLastError());
+			GlobalFree((HGLOBAL)lpszBuffer);
+			return FALSE;
+		}
 
-	varValue = pValue[0].vDataValue;
+		printf("Mensagem recebida: %s\n", lpszBuffer);
 
-	//Release memeory allocated by the OPC server:
-	CoTaskMemFree(pErrors);
-	pErrors = NULL;
+		// Concatenate the message and the message-number string. 
 
-	CoTaskMemFree(pValue);
-	pValue = NULL;
+		GlobalFree((HGLOBAL)lpszBuffer);
 
-	// release the reference to the IOPCSyncIO interface:
-	pIOPCSyncIO->Release();
-}
+		fResult = GetMailslotInfo(hSlot,  // mailslot handle 
+			(LPDWORD)NULL,               // no maximum message size 
+			&cbMessage,                   // size of next message 
+			&cMessage,                    // number of messages 
+			(LPDWORD)NULL);              // no read time-out 
 
-///////////////////////////////////////////////////////////////////////////
-// Remove the item whose server handle is hServerItem from the group
-// whose IOPCItemMgt interface is pointed by pIOPCItemMgt
-//
-void RemoveItem(IOPCItemMgt* pIOPCItemMgt, OPCHANDLE hServerItem)
-{
-	// server handle of items to remove:
-	OPCHANDLE hServerArray[1];
-	hServerArray[0] = hServerItem;
-
-	//Remove the item:
-	HRESULT* pErrors; // to store error code(s)
-	HRESULT hr = pIOPCItemMgt->RemoveItems(1, hServerArray, &pErrors);
-	_ASSERT(!hr);
-
-	//release memory allocated by the server:
-	CoTaskMemFree(pErrors);
-	pErrors = NULL;
-}
-
-////////////////////////////////////////////////////////////////////////
-// Remove the Group whose server handle is hServerGroup from the server
-// whose IOPCServer interface is pointed by pIOPCServer
-//
-void RemoveGroup(IOPCServer* pIOPCServer, OPCHANDLE hServerGroup)
-{
-	// Remove the group:
-	HRESULT hr = pIOPCServer->RemoveGroup(hServerGroup, FALSE);
-	if (hr != S_OK) {
-		if (hr == OPC_S_INUSE)
-			printf("Failed to remove OPC group: object still has references to it.\n");
-		else printf("Failed to remove OPC group. Error code = %x\n", hr);
-		exit(0);
+		if (!fResult)
+		{
+			printf("GetMailslotInfo failed (%d)\n", GetLastError());
+			return FALSE;
+		}
 	}
+	CloseHandle(hEvent);
+	return TRUE;
 }
+
+bool GenerateVar(VARIANT* var, VARTYPE var_type, void* var_value)
+{
+	var->vt = var_type;                //Assign var_type
+	//Typecast from void* to the specified type*, and them dereferenciate.
+	switch (var_type & ~VT_ARRAY){
+		case VT_I1:
+			var->iVal = *static_cast<char*>(var_value);	break;
+		case VT_I2:
+			var->intVal = *static_cast<short*>(var_value);	break;
+		case VT_I4:
+			var->intVal = *static_cast<long*>(var_value);	break;
+		case VT_UI1:
+			var->uiVal = *static_cast<unsigned char*>(var_value);	break;
+		case VT_UI2:
+			var->ulVal = *static_cast<unsigned short*>(var_value);	break;
+		case VT_UI4:
+			var->ulVal = *static_cast<unsigned long*>(var_value);	break;
+		case VT_R4:
+			var->fltVal = *static_cast<float*>(var_value);	break;
+		case VT_R8:
+			var->dblVal = *static_cast<double*>(var_value);	break;
+	}
+	return(true);
+}
+
+
 

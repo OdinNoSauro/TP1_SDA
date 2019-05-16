@@ -13,14 +13,25 @@
 
 extern UINT OPC_DATA_TIME;
 
-//	Constructor.  Reference count is initialized to zero.
-SOCDataCallback::SOCDataCallback () : m_cnRef (0)
-	{
-	}
 
+//	Constructor.  Reference count is initialized to zero.
+SOCDataCallback::SOCDataCallback () : m_cnRef (0){
+		printf("SOCDataCallback 2\n");
+		hMutex = CreateMutex(NULL, FALSE, (LPCWSTR)"dMutex");
+		hSlot = CreateFile(Slot, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		
+		
+
+		if (hSlot == INVALID_HANDLE_VALUE)
+		{
+			printf("CreateMailslot failed with %d\n", GetLastError());
+		}
+		else printf("Mailslot created successfully.\n");
+}
 //	Destructor
 SOCDataCallback::~SOCDataCallback ()
 	{
+	
 	}
 
 // IUnknown methods
@@ -103,7 +114,10 @@ HRESULT STDMETHODCALLTYPE SOCDataCallback::OnDataChange(
     char szLocalDate[255], szLocalTime[255];
 	bool status;
 	char buffer[100];
+	char msg[100];
 	WORD quality;
+	BOOL fResult;
+	DWORD cbWritten;
 
 	// Validate arguments.  Return with "invalid argument" error code 
 	// if any are invalid. KEPWARE´s original code checks also if the
@@ -119,35 +133,35 @@ HRESULT STDMETHODCALLTYPE SOCDataCallback::OnDataChange(
 		printf("IOPCDataCallback::ONDataChange: invalid arguments.\n");
 		return (E_INVALIDARG);
 	}
-	
 	// Loop over items:
-	for (DWORD dwItem = 0; dwItem < dwCount; dwItem++)
+	strcpy(msg, "");
+	for (DWORD dwItem = 0; dwItem < 4; dwItem++)
 	{
 		// Print the item value, quality and time stamp. In this example, only
 		// a few OPC data types are supported.
 		status = VarToStr(pvValues[dwItem], buffer);
-		if (status){
-			printf("Data callback: Value = %s", buffer);
+		 if (status) {
+
+			 strcat(msg, buffer);
+			 strcat(msg, "/");
+			/*printf("Data callback: Value = %s", buffer);
 			quality = pwQualities [dwItem] & OPC_QUALITY_MASK;
 			if (quality == OPC_QUALITY_GOOD)
-				printf(" Quality: good");
+				printf(" Quality: good\n");
 			else
-			    printf(" Quality: not good");
-			// Code below extracted from the Microsoft KB:
-			//     http://support.microsoft.com/kb/188768
-			// Note that in order for it to work, the Visual Studio C++ must
-			// be configured so that the "character set" property is "not set"
-			// (Project->Project Properties->Configuration Properties->General).
-			// Otherwise, if defined e.g. as "use Unicode" (as it seems to be
-			// the default when a new project is created), there will be
-			// compilation errors.
-			FileTimeToLocalFileTime(&pftTimeStamps [dwItem],&lft);
-			FileTimeToSystemTime(&lft, &st);
-			GetDateFormat(LOCALE_SYSTEM_DEFAULT, DATE_SHORTDATE, &st, NULL, (LPWSTR)szLocalDate, 255);
-			GetTimeFormat(LOCALE_SYSTEM_DEFAULT, 0, &st, NULL, (LPWSTR)szLocalTime, 255);
-			printf(" Time: %s %s\n", szLocalDate, szLocalTime);
+				printf(" Quality: not good\n");*/
 		}
 		else printf ("IOPCDataCallback: Unsupported item type\n");
+		
+	}
+	fResult = WriteFile(hSlot,
+		msg,
+		(DWORD)(strlen(msg) + 1) * sizeof(TCHAR),
+		&cbWritten,
+		(LPOVERLAPPED)NULL);
+	if (!fResult)
+	{
+		printf("WriteFile failed with %d.\n", GetLastError());
 	}
 
 	// Return "success" code.  Note this does not mean that there were no 
@@ -169,6 +183,7 @@ HRESULT STDMETHODCALLTYPE SOCDataCallback::OnReadComplete(
 	FILETIME *pftTimeStamps,
 	HRESULT *pErrors)
 {
+	
 	return (S_OK);
 }
 
@@ -189,9 +204,12 @@ HRESULT STDMETHODCALLTYPE SOCDataCallback::OnCancelComplete(
 {
 	return(S_OK);
 }
-void  SOCDataCallback::updateData(unsigned int* tubePresure, unsigned int* tubeTemperature, float* reservatoryLevel, float* reservatoryPressure) {
+int  SOCDataCallback::updateData(unsigned int* tubePresure, unsigned int* tubeTemperature, float* reservatoryLevel, float* reservatoryPressure) {
+	WaitForSingleObject(hMutex, INFINITE);
 	*tubePresure = this->tubePressure;
 	*tubeTemperature = this->tubeTemperature;
 	*reservatoryLevel = this->reservatoryLevel;
 	*reservatoryPressure = this->reservatoryPressure;
+	ReleaseMutex(hMutex);
+	return 1;
 }

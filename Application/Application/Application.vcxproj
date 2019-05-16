@@ -154,12 +154,14 @@
   <ItemGroup>
     <ClCompile Include="Application.cpp" />
     <ClCompile Include="opcda_i.c" />
+    <ClCompile Include="OPCFunctions.cpp" />
     <ClCompile Include="SOCAdviseSink.cpp" />
     <ClCompile Include="SOCDataCallback.cpp" />
     <ClCompile Include="SOCWrapperlFunctions.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="opcda.h" />
+    <ClInclude Include="OPCFunctions.h" />
     <ClInclude Include="SOCAdviseSink.h" />
     <ClInclude Include="SOCDataCallback.h" />
     <ClInclude Include="SOCWrapperFunctions.h" />

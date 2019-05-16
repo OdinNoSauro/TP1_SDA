@@ -62,10 +62,11 @@ class SOCDataCallback : public IOPCDataCallback
 			DWORD dwTransID,			// Transaction ID provided by the client when the read/write/refresh was initiated
 			OPCHANDLE hGroup);
 
-		void updateData(unsigned int* tubePresure, unsigned int* tubeTemperature, float* reservatoryLevel, float* reservatoryPressure);
+		int updateData(unsigned int* tubePresure, unsigned int* tubeTemperature, float* reservatoryLevel, float* reservatoryPressure);
 
 	private:
 		DWORD m_cnRef;
+		HANDLE hMutex;
 		unsigned int pressureSetPoint,
 			gasVolume,
 			tubePressure,
@@ -74,6 +75,9 @@ class SOCDataCallback : public IOPCDataCallback
 		float temperatureSetPoint,
 			reservatoryPressure,
 			reservatoryLevel;
+
+		HANDLE hSlot;
+		LPTSTR Slot = (LPTSTR) TEXT("\\\\.\\mailslot\\sample_mailslot");
 
 	};
 
