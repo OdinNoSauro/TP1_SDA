@@ -11,6 +11,7 @@
 #include "SOCDataCallback.h"
 #include "SOCWrapperFunctions.h"
 
+
 extern UINT OPC_DATA_TIME;
 
 
@@ -114,7 +115,7 @@ HRESULT STDMETHODCALLTYPE SOCDataCallback::OnDataChange(
     char szLocalDate[255], szLocalTime[255];
 	bool status;
 	char buffer[100];
-	char msg[100];
+	char msg[200], tubePressString[100], tubeTempString[100], resLevelString[100], resPressString[100];
 	WORD quality;
 	BOOL fResult;
 	DWORD cbWritten;
@@ -134,26 +135,36 @@ HRESULT STDMETHODCALLTYPE SOCDataCallback::OnDataChange(
 		return (E_INVALIDARG);
 	}
 	// Loop over items:
-	strcpy(msg, "");
 	for (DWORD dwItem = 0; dwItem < 4; dwItem++)
 	{
 		// Print the item value, quality and time stamp. In this example, only
 		// a few OPC data types are supported.
+		
 		status = VarToStr(pvValues[dwItem], buffer);
 		 if (status) {
-
-			 strcat(msg, buffer);
-			 strcat(msg, "/");
-			/*printf("Data callback: Value = %s", buffer);
-			quality = pwQualities [dwItem] & OPC_QUALITY_MASK;
-			if (quality == OPC_QUALITY_GOOD)
-				printf(" Quality: good\n");
-			else
-				printf(" Quality: not good\n");*/
-		}
-		else printf ("IOPCDataCallback: Unsupported item type\n");
-		
+			 switch (phClientItems[dwItem]){
+				 case 1:
+					 strcpy(tubePressString, buffer);
+					 break;
+				 case 2:
+					 strcpy(tubeTempString, buffer);
+					 break;
+				 case 3:
+					 strcpy(resPressString, buffer);
+					 break;
+				 case 4:
+					 strcpy(resLevelString, buffer);
+					 break;
+				 default:
+					 break;
+			 }
+		 }
+		 else {
+			 printf("IOPCDataCallback: Unsupported item type\n");
+			 return(S_FALSE);
+		 }
 	}
+	sprintf_s(msg, "%s/%s/%s/%s", tubePressString, tubeTempString, resPressString, resLevelString);
 	fResult = WriteFile(hSlot,
 		msg,
 		(DWORD)(strlen(msg) + 1) * sizeof(TCHAR),

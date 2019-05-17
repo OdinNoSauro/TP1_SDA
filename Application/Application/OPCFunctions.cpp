@@ -43,12 +43,9 @@ IOPCServer* InstantiateServer()
 // Returns a pointer to the IOPCItemMgt interface of the added group
 // and a server opc handle to the added group.
 //
-void AddTheGroup(IOPCServer* pIOPCServer, IOPCItemMgt* &pIOPCItemMgt,
-	OPCHANDLE& hServerGroup)
-{
+void AddTheGroup(IOPCServer* pIOPCServer, IOPCItemMgt* &pDataIOPCItemMgt, IOPCItemMgt* &pParametersIOPCItemMgt, OPCHANDLE* hServerGroup){
 	DWORD dwUpdateRate = 0;
 	OPCHANDLE hClientGroup = 0;
-
 	// Add an OPC group and get a pointer to the IUnknown I/F:
 	HRESULT hr = pIOPCServer->AddGroup(/*szName*/ L"Group1",
 		/*bActive*/ FALSE,
@@ -57,44 +54,122 @@ void AddTheGroup(IOPCServer* pIOPCServer, IOPCItemMgt* &pIOPCItemMgt,
 		/*pTimeBias*/ 0,
 		/*pPercentDeadband*/ 0,
 		/*dwLCID*/0,
-		/*phServerGroup*/&hServerGroup,
+		/*phServerGroup*/&hServerGroup[0],
 		&dwUpdateRate,
 		/*riid*/ IID_IOPCItemMgt,
-		/*ppUnk*/ (IUnknown**)&pIOPCItemMgt);
+		/*ppUnk*/ (IUnknown**)&pDataIOPCItemMgt);
+	_ASSERT(!FAILED(hr));
+
+	 hr = pIOPCServer->AddGroup(/*szName*/ L"Group2",
+		/*bActive*/ FALSE,
+		/*dwRequestedUpdateRate*/ 1000,
+		/*hClientGroup*/ hClientGroup+1,
+		/*pTimeBias*/ 0,
+		/*pPercentDeadband*/ 0,
+		/*dwLCID*/1,
+		/*phServerGroup*/&hServerGroup[1],
+		&dwUpdateRate,
+		/*riid*/ IID_IOPCItemMgt,
+		/*ppUnk*/ (IUnknown**)&pParametersIOPCItemMgt);
 	_ASSERT(!FAILED(hr));
 }
 
 
-void AddAllItems(IOPCItemMgt* pIOPCItemMgt, OPCHANDLE* hServerItem)
+void AddAllItems(IOPCItemMgt* pDataIOPCItemMgt, IOPCItemMgt* pParametersIOPCItemMgt, OPCHANDLE* hServerItem)
 {
 	HRESULT hr;
-	OPCITEMDEF ItemArray[7];
-	for (int i = 0; i < 7; i++) {
+	OPCITEMDEF DataItemArray[4], ParameterItemArray[3];
+	// Array of items to add:
+	DataItemArray[0] = {
+		/*szAccessPath*/(LPWSTR)L"",
+		/*szItemID*/ (LPWSTR)ITEMS_ID[0],
+		/*bActive*/ TRUE,
+		/*hClient*/(OPCHANDLE)1,
+		/*dwBlobSize*/ 0,
+		/*pBlob*/ NULL,
+		/*vtRequestedDataType*/ VT_UI1,
+		/*wReserved*/0
+		};
+	DataItemArray[1] = {
+		/*szAccessPath*/(LPWSTR)L"",
+		/*szItemID*/ (LPWSTR)ITEMS_ID[1],
+		/*bActive*/ TRUE,
+		/*hClient*/(OPCHANDLE)2,
+		/*dwBlobSize*/ 0,
+		/*pBlob*/ NULL,
+		/*vtRequestedDataType*/ VT_UI2,
+		/*wReserved*/0
+	};
+	for (int i = 2; i < 4; i++) {
 		// Array of items to add:
-		ItemArray[i] = {
+		DataItemArray[i] = {
 			/*szAccessPath*/(LPWSTR)L"",
 			/*szItemID*/ (LPWSTR)ITEMS_ID[i],
 			/*bActive*/ TRUE,
-			/*hClient*/ 1,
+			/*hClient*/(OPCHANDLE)i + 1,
 			/*dwBlobSize*/ 0,
 			/*pBlob*/ NULL,
 			/*vtRequestedDataType*/ VT,
 			/*wReserved*/0
 		};
 	}
+	
+	ParameterItemArray[0] = {
+		/*szAccessPath*/(LPWSTR)L"",
+		/*szItemID*/ (LPWSTR)ITEMS_ID[4],
+		/*bActive*/ TRUE,
+		/*hClient*/(OPCHANDLE) 4,
+		/*dwBlobSize*/ 0,
+		/*pBlob*/ NULL,
+		/*vtRequestedDataType*/ VT_UI2,
+		/*wReserved*/0
+	};
+
+	ParameterItemArray[1] = {
+		/*szAccessPath*/(LPWSTR)L"",
+		/*szItemID*/ (LPWSTR)ITEMS_ID[5],
+		/*bActive*/ TRUE,
+		/*hClient*/(OPCHANDLE)5,
+		/*dwBlobSize*/ 0,
+		/*pBlob*/ NULL,
+		/*vtRequestedDataType*/ VT,
+		/*wReserved*/0
+	};
+
+	ParameterItemArray[2] = {
+		/*szAccessPath*/(LPWSTR)L"",
+		/*szItemID*/ (LPWSTR)ITEMS_ID[6],
+		/*bActive*/ TRUE,
+		/*hClient*/(OPCHANDLE)6,
+		/*dwBlobSize*/ 0,
+		/*pBlob*/ NULL,
+		/*vtRequestedDataType*/ VT_UI4,
+		/*wReserved*/0
+	};
+
 	//Add Result:
 	OPCITEMRESULT* pAddResult = NULL;
 	HRESULT* pErrors = NULL;
 
 	// Add an Item to the previous Group:
-	hr = pIOPCItemMgt->AddItems(7, ItemArray, &pAddResult, &pErrors);
+	hr = pDataIOPCItemMgt->AddItems(4, DataItemArray, &pAddResult, &pErrors);
 	if (hr != S_OK) {
 		printf("Failed call to AddItems function. Error code = %x\n", hr);
 		exit(0);
 	}
-	for (int i = 0; i < 7; i++) {
+	for (int i = 0; i < 4; i++) {
 		// Server handle for the added item:
 		hServerItem[i] = pAddResult[i].hServer;
+	}
+
+	hr = pParametersIOPCItemMgt->AddItems(3, ParameterItemArray, &pAddResult, &pErrors);
+	if (hr != S_OK) {
+		printf("Failed call to AddItems function. Error code = %x\n", hr);
+		exit(0);
+	}
+	for (int i = 0; i < 3; i++) {
+		// Server handle for the added item:
+		hServerItem[i+4] = pAddResult[i].hServer;
 	}
 
 	// release memory allocated by the server:

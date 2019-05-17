@@ -135,7 +135,8 @@ bool VarToStr (VARIANT pvar, char *buffer)
 			//sprintf(buffer, "%u",    pvar.uiVal);	break;
 			sprintf(buffer, "%06u",    pvar.uiVal);	break;
 		case VT_UI2:
-			sprintf(buffer, "%u",    pvar.ulVal);	break;
+			sprintf(buffer, "%u",    pvar.ulVal);	
+			break;
 			//RAFAEL sprintf(buffer, "%06u",    pvar.ulVal);	break;
 		case VT_UI4:
 			sprintf(buffer, "%lu",   pvar.ulVal);	break;

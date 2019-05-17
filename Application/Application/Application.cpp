@@ -42,12 +42,21 @@ LPTSTR SlotName = (LPTSTR)TEXT("\\\\.\\mailslot\\sample_mailslot");
 #define EXITERROR -1
 #define EXITSUCESS 0 
 
+#define WHITE   FOREGROUND_RED   | FOREGROUND_GREEN      | FOREGROUND_BLUE
+#define HLGREEN FOREGROUND_GREEN | FOREGROUND_INTENSITY
+#define HLRED   FOREGROUND_RED   | FOREGROUND_INTENSITY
+#define HLBLUE  FOREGROUND_BLUE  | FOREGROUND_INTENSITY
+#define YELLOW  FOREGROUND_RED   | FOREGROUND_GREEN
+#define PINK FOREGROUND_RED | FOREGROUND_BLUE
+#define CYAN FOREGROUND_GREEN | FOREGROUND_BLUE
+
 #pragma comment(lib, "Ws2_32.lib")
 
 HANDLE hOPCClientThread,
 	   hSockerServerThread,
 	   hEvent,
-	   hMutex;
+	   hMutex,
+	   hOut;
 
 unsigned int sequenceNumber, 
 			 pressureSetPoint,
@@ -65,6 +74,8 @@ DWORD WINAPI OPCClient();	    // declaração da função
 DWORD WINAPI SocketServer();	// declaração da função
 int increaseSequenceNumber(int previousSequenceNumber);
 BOOL ReadSlot();
+void parseMessage(char* msg);
+bool GenerateVar(VARIANT* var, VARTYPE var_type, void* var_value);
 
 
 
@@ -83,6 +94,10 @@ int main(int argc, char **argv) {
 	{
 		printf("CreateMailslot failed with %d\n", GetLastError());
 	}
+
+	hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+	if (hOut == INVALID_HANDLE_VALUE)
+		printf("Erro ao obter handle para a saída da console\n");
 
 	hOPCClientThread = (HANDLE)_beginthreadex(
 		NULL,
@@ -118,9 +133,10 @@ int main(int argc, char **argv) {
 DWORD WINAPI OPCClient() {
 
 	IOPCServer* pIOPCServer = NULL;   //pointer to IOPServer interface
-	IOPCItemMgt* pIOPCItemMgt = NULL; //pointer to IOPCItemMgt interface
+	IOPCItemMgt* pDataIOPCItemMgt = NULL; //pointer to IOPCItemMgt interface
+	IOPCItemMgt* pParametersIOPCItemMgt = NULL; //pointer to IOPCItemMgt interface
 
-	OPCHANDLE hServerGroup;    // server handle to the group
+	OPCHANDLE hServerGroup[2];    // server handle to the group
 	OPCHANDLE hServerItem[7];  // server handle to the item
 
 	DWORD dwReturn,
@@ -132,6 +148,7 @@ DWORD WINAPI OPCClient() {
 	VariantInit(&tempVariant);
 
 	// Have to be done before using microsoft COM library:
+	SetConsoleTextAttribute(hOut, WHITE);
 	printf("Initializing the COM environment...\n");
 	CoInitialize(NULL);
 
@@ -142,11 +159,11 @@ DWORD WINAPI OPCClient() {
 	// Add the OPC group the OPC server and get an handle to the IOPCItemMgt
 	//interface:
 	printf("Adding a group in the INACTIVE state for the moment...\n");
-	AddTheGroup(pIOPCServer, pIOPCItemMgt, hServerGroup);
+	AddTheGroup(pIOPCServer, pDataIOPCItemMgt,  pParametersIOPCItemMgt, hServerGroup);
 
 	// Add the OPC item. First we have to convert from wchar_t* to char*
 	// in order to print the item name in the console.
-	AddAllItems(pIOPCItemMgt, hServerItem);
+	AddAllItems(pDataIOPCItemMgt, pParametersIOPCItemMgt, hServerItem);
 	
 	int bRet;
 	MSG msg;
@@ -162,12 +179,12 @@ DWORD WINAPI OPCClient() {
 	pSOCDataCallback->AddRef();
 
 	printf("Setting up the IConnectionPoint callback connection...\n");
-	SetDataCallback(pIOPCItemMgt, pSOCDataCallback, pIConnectionPoint, &dwCookie);
+	SetDataCallback(pDataIOPCItemMgt, pSOCDataCallback, pIConnectionPoint, &dwCookie);
 
 	// Change the group to the ACTIVE state so that we can receive the
 	// server´s callback notification
 	printf("Changing the group state to ACTIVE...\n");
-	SetGroupActive(pIOPCItemMgt);
+	SetGroupActive(pDataIOPCItemMgt);
 
 	// Enter again a message pump in order to process the server´s callback
 	// notifications, for the same reason explained before.
@@ -176,6 +193,7 @@ DWORD WINAPI OPCClient() {
 		
 		bRet = GetMessage(&msg, NULL, 0, 0);
 		if (!bRet) {
+			SetConsoleTextAttribute(hOut, HLRED);
 			printf("Failed to get windows message! Error code = %d\n", GetLastError());
 			exit(0);
 		}
@@ -184,9 +202,15 @@ DWORD WINAPI OPCClient() {
 		ReadSlot();
 		int st = WaitForSingleObject(hEvent, 100);
 		if (st == WAIT_OBJECT_0) {
-			printf("Event received.\n");
 			WaitForSingleObject(hMutex, INFINITE);
-			
+			SetConsoleTextAttribute(hOut, CYAN);
+			printf("Cliente OPC - Mensagem com parametros eviada: %05i/%.2f/%05i\n\n", pressureSetPoint, temperatureSetPoint, gasVolume);
+			GenerateVar(&tempVariant, VT_UI2, (void*)&pressureSetPoint);
+			writeItem(pParametersIOPCItemMgt, hServerItem[4], tempVariant);
+			GenerateVar(&tempVariant, VT_R4, (void*)&temperatureSetPoint);
+			writeItem(pParametersIOPCItemMgt, hServerItem[5], tempVariant);
+			GenerateVar(&tempVariant, VT_UI4, (void*)&gasVolume);
+			writeItem(pParametersIOPCItemMgt, hServerItem[6], tempVariant);
 			ReleaseMutex(hMutex);
 		}
 		ResetEvent(hEvent);
@@ -195,6 +219,7 @@ DWORD WINAPI OPCClient() {
 	} while (true);
 
 	// Cancel the callback and release its reference
+	SetConsoleTextAttribute(hOut, WHITE);
 	printf("Cancelling the IOPCDataCallback notifications...\n");
 	CancelDataCallback(pIConnectionPoint, dwCookie);
 	//pIConnectionPoint->Release();
@@ -202,20 +227,28 @@ DWORD WINAPI OPCClient() {
 
 	// Remove the OPC item:
 	printf("Removing the OPC item...\n");
-	for (int i = 0; i < 7; i++)	{
-		RemoveItem(pIOPCItemMgt, hServerItem[i]);
+	for (int i = 0; i < 4; i++)	{
+		RemoveItem(pDataIOPCItemMgt, hServerItem[i]);
+	}
+	for (int i = 0; i < 3; i++) {
+		RemoveItem(pParametersIOPCItemMgt, hServerItem[i]);
 	}
 
 	// Remove the OPC group:
+	SetConsoleTextAttribute(hOut, WHITE);
 	printf("Removing the OPC group object...\n");
-	pIOPCItemMgt->Release();
-	RemoveGroup(pIOPCServer, hServerGroup);
+	pDataIOPCItemMgt->Release();
+	pParametersIOPCItemMgt->Release();
+	RemoveGroup(pIOPCServer, hServerGroup[0]);
+	RemoveGroup(pIOPCServer, hServerGroup[1]);
 
 	// release the interface references:
+	SetConsoleTextAttribute(hOut, WHITE);
 	printf("Removing the OPC server object...\n");
 	pIOPCServer->Release();
 
 	//close the COM library:
+	SetConsoleTextAttribute(hOut, WHITE);
 	printf("Releasing the COM environment...\n");
 	CoUninitialize();
 
@@ -237,6 +270,7 @@ DWORD WINAPI SocketServer() {
 	
 	status = WSAStartup(MAKEWORD(2, 2), &wsaData);
 	if (status < 0) {
+		SetConsoleTextAttribute(hOut, HLRED);
 		printf("Erro na inicizalização do ambiente WSA: %d\n", status);
 		return EXITERROR;
 	
@@ -255,6 +289,7 @@ DWORD WINAPI SocketServer() {
 	serverSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
 	if (serverSocket == INVALID_SOCKET) {
 		status = WSAGetLastError();
+		SetConsoleTextAttribute(hOut, HLRED);
 		printf("Erro na criação do socket: %d\n", status);
 		WSACleanup();
 		return EXITERROR;
@@ -264,6 +299,7 @@ DWORD WINAPI SocketServer() {
 	status = bind(serverSocket, result->ai_addr, (int)result->ai_addrlen);
 	if (status == SOCKET_ERROR) {
 		status = WSAGetLastError();
+		SetConsoleTextAttribute(hOut, HLRED);
 		printf("Erro na vinculação do socket: %d\n", status);
 		WSACleanup();
 		return EXITERROR;
@@ -275,6 +311,7 @@ DWORD WINAPI SocketServer() {
 	status = listen(serverSocket, SOMAXCONN);
 	if (status == SOCKET_ERROR) {
 		status = WSAGetLastError();
+		SetConsoleTextAttribute(hOut, HLRED);
 		printf("Erro no listening: %d\n", status);
 		closesocket(serverSocket);
 		WSACleanup();
@@ -285,6 +322,7 @@ DWORD WINAPI SocketServer() {
 	clientSocket = accept(serverSocket,NULL,NULL);
 	if (clientSocket == INVALID_SOCKET) {
 		status = WSAGetLastError();
+		SetConsoleTextAttribute(hOut, HLRED);
 		printf("Erro na função accept do socket: %d\n", status);
 		closesocket(serverSocket);
 		WSACleanup();
@@ -300,8 +338,8 @@ DWORD WINAPI SocketServer() {
 			strncpy_s(code, buffer, 2);
 			code[2] = '\0';
 			if (strcmp(code, DATAREQUEST) == 0) {
-
-				printf("Mensagem de requisicao de dados recebida: %s\n", buffer);
+				SetConsoleTextAttribute(hOut, HLBLUE);
+				printf("Servidor Socket - Mensagem de requisicao de dados recebida: %s\n\n", buffer);
 				strncpy_s(oldSeqNumber, &buffer[3], 6);
 				WaitForSingleObject(hMutex, INFINITE);
 				sequenceNumber = increaseSequenceNumber(atoi(oldSeqNumber));
@@ -321,9 +359,11 @@ DWORD WINAPI SocketServer() {
 				sprintf_s(buffer, "%s/%06i/%05i/%05i/%s/%s", DATAMSG, sequenceNumber, tubePressure, tubeTemperature, resPressure, resLevel);
 				ReleaseMutex(hMutex);
 
-				printf("Mensagem com dados enviada: %s\n", buffer);
+				SetConsoleTextAttribute(hOut, HLGREEN);
+				printf("Servidor Socket - Mensagem com dados enviada: %s\n\n", buffer);
 				status = send(clientSocket, buffer, strlen(buffer), 0);
 				if (status == SOCKET_ERROR) {
+					SetConsoleTextAttribute(hOut, HLRED);
 					printf("Error no envio: %d\n", WSAGetLastError());
 					closesocket(clientSocket);
 					WSACleanup();
@@ -333,21 +373,25 @@ DWORD WINAPI SocketServer() {
 
 			}
 			else if (strcmp(code, PARAMETERSMSG) == 0) {
-				printf("Mensagem com parametros de controle recebida: %s\n", buffer);
-				std::string str = buffer;
-
+			
 				WaitForSingleObject(hMutex, INFINITE);
+
+				SetConsoleTextAttribute(hOut, YELLOW);
+				printf("Servidor Socket - Mensagem com parametros de controle recebida: %s\n\n", buffer);
+				std::string str = buffer;
 				sequenceNumber = increaseSequenceNumber(std::stoi(str.substr(3, 8)));
 				pressureSetPoint =  std::stoi(str.substr(10, 14));
-				temperatureSetPoint = std::stoi(str.substr(16, 21));
+				temperatureSetPoint = std::stof(str.substr(16, 21));
 				gasVolume = std::stoi(str.substr(23, 27));
 				sprintf_s(buffer, "%s/%06i", ACKCODE, sequenceNumber);
+				SetConsoleTextAttribute(hOut, HLGREEN);
+				printf("Servidor Socket - Mensagem ACK enviada: %s\n\n", buffer);
+
 				ReleaseMutex(hMutex);
 				SetEvent(hEvent);
-
-				printf("Mensagem ACK enviada: %s\n", buffer);
 				status = send(clientSocket, buffer, strlen(buffer), 0);
 				if (status == SOCKET_ERROR) {
+					SetConsoleTextAttribute(hOut, HLRED);
 					printf("Error no envio: %d\n", WSAGetLastError());
 					closesocket(clientSocket);
 					WSACleanup();
@@ -360,14 +404,18 @@ DWORD WINAPI SocketServer() {
 			}
 		}
 		else if (response == 0) {
+			SetConsoleTextAttribute(hOut, WHITE);
 			printf("Encerrando a conexao\n");
 		}
 		else {
+			SetConsoleTextAttribute(hOut, HLRED);
 			printf("Error no recebimento dos dados: %d\n", WSAGetLastError());
+			SetConsoleTextAttribute(hOut, WHITE);
 			printf("Esperando Conexao...\n");
 			status = listen(serverSocket, SOMAXCONN);
 			if (status == SOCKET_ERROR) {
 				status = WSAGetLastError();
+				SetConsoleTextAttribute(hOut, HLRED);
 				printf("Erro no listening: %d\n", status);
 				closesocket(serverSocket);
 				WSACleanup();
@@ -481,11 +529,13 @@ BOOL ReadSlot()
 			GlobalFree((HGLOBAL)lpszBuffer);
 			return FALSE;
 		}
-
-		printf("Mensagem recebida: %s\n", lpszBuffer);
-
-		// Concatenate the message and the message-number string. 
-
+		WaitForSingleObject(hMutex, INFINITE);
+		SetConsoleTextAttribute(hOut, PINK);
+		printf("Cliente OPC - Mensagem recebida de Dados: %s\n\n", lpszBuffer);
+		char* msg = (char*)lpszBuffer;
+		parseMessage(msg);
+		ReleaseMutex(hMutex);
+	
 		GlobalFree((HGLOBAL)lpszBuffer);
 
 		fResult = GetMailslotInfo(hSlot,  // mailslot handle 
@@ -504,8 +554,25 @@ BOOL ReadSlot()
 	return TRUE;
 }
 
-bool GenerateVar(VARIANT* var, VARTYPE var_type, void* var_value)
-{
+void parseMessage(char* msg) {
+	char* part = strtok(msg, "/");
+	
+	
+	tubePressure = atoi(part);
+
+	part = strtok(NULL, "/");
+	tubeTemperature = atoi(part);
+
+	part = strtok(NULL, "/");
+	reservatoryPressure = atof(part);
+
+	part = strtok(NULL, "/");
+	reservatoryLevel = atoi(part);
+	
+}
+
+bool GenerateVar(VARIANT* var, VARTYPE var_type, void* var_value){
+	
 	var->vt = var_type;                //Assign var_type
 	//Typecast from void* to the specified type*, and them dereferenciate.
 	switch (var_type & ~VT_ARRAY){

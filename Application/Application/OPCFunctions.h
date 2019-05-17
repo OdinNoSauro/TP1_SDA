@@ -25,8 +25,8 @@
 
 
 IOPCServer *InstantiateServer();
-void AddTheGroup(IOPCServer* pIOPCServer, IOPCItemMgt* &pIOPCItemMgt, OPCHANDLE& hServerGroup);
-void AddAllItems(IOPCItemMgt* pIOPCItemMgt, OPCHANDLE* hServerItem);
+void AddTheGroup(IOPCServer* pIOPCServer, IOPCItemMgt* &pDataIOPCItemMgt, IOPCItemMgt* &pParametersIOPCItemMgt, OPCHANDLE* hServerGroup);
+void AddAllItems(IOPCItemMgt* pDataIOPCItemMgt, IOPCItemMgt* pParametersIOPCItemMgt, OPCHANDLE* hServerItem);
 void RemoveItem(IOPCItemMgt* pIOPCItemMgt, OPCHANDLE hServerItem);
 void RemoveGroup(IOPCServer* pIOPCServer, OPCHANDLE hServerGroup);
 void writeItem(IOPCItemMgt* pIOPCItemMgt, OPCHANDLE hServerItem, VARIANT tempVariant);
