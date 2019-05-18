@@ -260,6 +260,10 @@ DWORD WINAPI SocketServer() {
 	SOCKET serverSocket;
 	SOCKET clientSocket;
 	PADDRINFOA result = NULL;
+	fd_set set;
+	struct timeval timeout;
+
+	
 
 	std::ostringstream ss;
 
@@ -308,7 +312,7 @@ DWORD WINAPI SocketServer() {
 	freeaddrinfo(result);
 
 	printf("Socket comeca a escutar\n");
-	status = listen(serverSocket, SOMAXCONN);
+	status = listen(serverSocket, 3);
 	if (status == SOCKET_ERROR) {
 		status = WSAGetLastError();
 		SetConsoleTextAttribute(hOut, HLRED);
@@ -328,110 +332,128 @@ DWORD WINAPI SocketServer() {
 		WSACleanup();
 		return EXITERROR;
 	}
+
 	
 	do {
-		response = recv(clientSocket, buffer, BUFFERLEN, 0);
-
-		if (response > 0) { // recebeu alguma mensagem
-			if (response < BUFFERLEN)
-				buffer[response] = '\0';
-			strncpy_s(code, buffer, 2);
-			code[2] = '\0';
-			if (strcmp(code, DATAREQUEST) == 0) {
-				SetConsoleTextAttribute(hOut, HLBLUE);
-				printf("Servidor Socket - Mensagem de requisicao de dados recebida: %s\n\n", buffer);
-				strncpy_s(oldSeqNumber, &buffer[3], 6);
-				WaitForSingleObject(hMutex, INFINITE);
-				sequenceNumber = increaseSequenceNumber(atoi(oldSeqNumber));
-				_gcvt_s(resPressure,10,reservatoryPressure, 5);
-				_gcvt_s(resLevel, 10, reservatoryLevel, 5);
-				
-				int i;
-				while ((i = strlen(resPressure)) < 6) {
-					resPressure[i] = '0';
-					resPressure[i+1] = '\0';
-				}
-
-				while ((i = strlen(resLevel)) < 6) {
-					resLevel[i] = '0';
-					resLevel[i + 1] = '\0';
-				}
-				sprintf_s(buffer, "%s/%06i/%05i/%05i/%s/%s", DATAMSG, sequenceNumber, tubePressure, tubeTemperature, resPressure, resLevel);
-				ReleaseMutex(hMutex);
-
-				SetConsoleTextAttribute(hOut, HLGREEN);
-				printf("Servidor Socket - Mensagem com dados enviada: %s\n\n", buffer);
-				status = send(clientSocket, buffer, strlen(buffer), 0);
-				if (status == SOCKET_ERROR) {
-					SetConsoleTextAttribute(hOut, HLRED);
-					printf("Error no envio: %d\n", WSAGetLastError());
-					closesocket(clientSocket);
-					WSACleanup();
-					return EXITERROR;
-				}
-				
-
-			}
-			else if (strcmp(code, PARAMETERSMSG) == 0) {
-			
-				WaitForSingleObject(hMutex, INFINITE);
-
-				SetConsoleTextAttribute(hOut, YELLOW);
-				printf("Servidor Socket - Mensagem com parametros de controle recebida: %s\n\n", buffer);
-				std::string str = buffer;
-				sequenceNumber = increaseSequenceNumber(std::stoi(str.substr(3, 8)));
-				pressureSetPoint =  std::stoi(str.substr(10, 14));
-				temperatureSetPoint = std::stof(str.substr(16, 21));
-				gasVolume = std::stoi(str.substr(23, 27));
-				sprintf_s(buffer, "%s/%06i", ACKCODE, sequenceNumber);
-				SetConsoleTextAttribute(hOut, HLGREEN);
-				printf("Servidor Socket - Mensagem ACK enviada: %s\n\n", buffer);
-
-				ReleaseMutex(hMutex);
-				SetEvent(hEvent);
-				status = send(clientSocket, buffer, strlen(buffer), 0);
-				if (status == SOCKET_ERROR) {
-					SetConsoleTextAttribute(hOut, HLRED);
-					printf("Error no envio: %d\n", WSAGetLastError());
-					closesocket(clientSocket);
-					WSACleanup();
-					return EXITERROR;
-				}
-
-			}
-			else {
-				printf("Strcmp deu errado");
-			}
-		}
-		else if (response == 0) {
-			SetConsoleTextAttribute(hOut, WHITE);
-			printf("Encerrando a conexao\n");
-		}
-		else {
-			SetConsoleTextAttribute(hOut, HLRED);
-			printf("Error no recebimento dos dados: %d\n", WSAGetLastError());
-			SetConsoleTextAttribute(hOut, WHITE);
-			printf("Esperando Conexao...\n");
-			status = listen(serverSocket, SOMAXCONN);
-			if (status == SOCKET_ERROR) {
-				status = WSAGetLastError();
-				SetConsoleTextAttribute(hOut, HLRED);
-				printf("Erro no listening: %d\n", status);
-				closesocket(serverSocket);
-				WSACleanup();
-				return EXITERROR;
-			}
-
-			clientSocket = accept(serverSocket, NULL, NULL);
-			if (clientSocket == INVALID_SOCKET) {
-				status = WSAGetLastError();
-				printf("Erro na função accept do socket: %d\n", status);
-				closesocket(serverSocket);
-				WSACleanup();
-				return EXITERROR;
-			}
+		FD_ZERO(&set); /* clear the set */
+		FD_SET(clientSocket, &set); /* add our file descriptor to the set */
+		timeout.tv_sec = 3000;
+		timeout.tv_usec = 0;
+		int rv = select(clientSocket, &set, NULL, NULL, &timeout); 
+		if (rv == SOCKET_ERROR) {
+			printf("Socket_Error\n");
 			response = 1;
 		}
+		else if (rv == 0) {
+			printf("Timeout\n");
+			response = 1;
+		}
+		else {
+			response = recv(clientSocket, buffer, BUFFERLEN, 0);
+
+			if (response > 0) { // recebeu alguma mensagem
+				if (response < BUFFERLEN)
+					buffer[response] = '\0';
+				strncpy_s(code, buffer, 2);
+				code[2] = '\0';
+				if (strcmp(code, DATAREQUEST) == 0) {
+					SetConsoleTextAttribute(hOut, HLBLUE);
+					printf("Servidor Socket - Mensagem de requisicao de dados recebida: %s\n\n", buffer);
+					strncpy_s(oldSeqNumber, &buffer[3], 6);
+					WaitForSingleObject(hMutex, INFINITE);
+					sequenceNumber = increaseSequenceNumber(atoi(oldSeqNumber));
+					_gcvt_s(resPressure, 10, reservatoryPressure, 5);
+					_gcvt_s(resLevel, 10, reservatoryLevel, 5);
+
+					int i;
+					while ((i = strlen(resPressure)) < 6) {
+						resPressure[i] = '0';
+						resPressure[i + 1] = '\0';
+					}
+
+					while ((i = strlen(resLevel)) < 6) {
+						resLevel[i] = '0';
+						resLevel[i + 1] = '\0';
+					}
+					sprintf_s(buffer, "%s/%06i/%05i/%05i/%s/%s", DATAMSG, sequenceNumber, tubePressure, tubeTemperature, resPressure, resLevel);
+					ReleaseMutex(hMutex);
+
+					SetConsoleTextAttribute(hOut, HLGREEN);
+					printf("Servidor Socket - Mensagem com dados enviada: %s\n\n", buffer);
+					status = send(clientSocket, buffer, strlen(buffer), 0);
+					if (status == SOCKET_ERROR) {
+						SetConsoleTextAttribute(hOut, HLRED);
+						printf("Error no envio: %d\n", WSAGetLastError());
+						closesocket(clientSocket);
+						WSACleanup();
+						return EXITERROR;
+					}
+
+
+				}
+				else if (strcmp(code, PARAMETERSMSG) == 0) {
+
+					WaitForSingleObject(hMutex, INFINITE);
+
+					SetConsoleTextAttribute(hOut, YELLOW);
+					printf("Servidor Socket - Mensagem com parametros de controle recebida: %s\n\n", buffer);
+					std::string str = buffer;
+					sequenceNumber = increaseSequenceNumber(std::stoi(str.substr(3, 8)));
+					pressureSetPoint = std::stoi(str.substr(10, 14));
+					temperatureSetPoint = std::stof(str.substr(16, 21));
+					gasVolume = std::stoi(str.substr(23, 27));
+					sprintf_s(buffer, "%s/%06i", ACKCODE, sequenceNumber);
+					SetConsoleTextAttribute(hOut, HLGREEN);
+					printf("Servidor Socket - Mensagem ACK enviada: %s\n\n", buffer);
+
+					ReleaseMutex(hMutex);
+					SetEvent(hEvent);
+					status = send(clientSocket, buffer, strlen(buffer), 0);
+					if (status == SOCKET_ERROR) {
+						SetConsoleTextAttribute(hOut, HLRED);
+						printf("Error no envio: %d\n", WSAGetLastError());
+						closesocket(clientSocket);
+						WSACleanup();
+						return EXITERROR;
+					}
+
+				}
+				else {
+					printf("Strcmp deu errado");
+				}
+			}
+			else if (response == 0) {
+				SetConsoleTextAttribute(hOut, WHITE);
+				printf("Encerrando a conexao\n");
+			}
+			else {
+				SetConsoleTextAttribute(hOut, HLRED);
+				printf("Error no recebimento dos dados: %d\n", WSAGetLastError());
+				SetConsoleTextAttribute(hOut, WHITE);
+				printf("Esperando Conexao...\n");
+				status = listen(serverSocket, 3);
+				if (status == SOCKET_ERROR) {
+					status = WSAGetLastError();
+					SetConsoleTextAttribute(hOut, HLRED);
+					printf("Erro no listening: %d\n", status);
+					closesocket(serverSocket);
+					WSACleanup();
+					return EXITERROR;
+				}
+				printf("Esperando Conexao...\n");
+				clientSocket = accept(serverSocket, NULL, NULL);
+				if (clientSocket == INVALID_SOCKET) {
+					status = WSAGetLastError();
+					printf("Erro na função accept do socket: %d\n", status);
+					closesocket(serverSocket);
+					WSACleanup();
+					return EXITERROR;
+				}
+				response = 1;
+			}
+
+		}
+		
 	} while (response > 0);
 
 	// Desabilitando o Socket
