@@ -10,7 +10,6 @@
 //  ->Preprocessor->Preprocessor definitions)
 #define _CRT_SECURE_NO_WARNINGS 1
 
-
 void SetAdviseSink(IUnknown* pGroupIUnknown, IAdviseSink* pSOCAdviseSink,
 				   IDataObject* &pIDataObject, DWORD* ptkAsyncConnection);
 void CancelAdviseSink(IDataObject *pIDataObject, DWORD tkAsyncConnection);

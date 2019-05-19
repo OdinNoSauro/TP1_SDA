@@ -1,4 +1,4 @@
-// Application.cpp : Este arquivo contém a função 'main'. A execução do programa começa e termina ali.
+// Application.cpp: Este arquivo contém a função 'main'. A execução do programa começa e termina ali.
 
 using namespace std;
 
@@ -12,8 +12,8 @@ using namespace std;
 #include <iostream>     // std::cout, std::ostream, std::ios
 #include <sstream>
 #include <process.h>	// _beginthreadex() e _endthreadex() 
-#include <iomanip>      // needed to use manipulators with parameters (precision, width)
-#include <atlbase.h>    // required for using the "_T" macro
+#include <iomanip>      // Necessário para utilizar manipuladores com parâmetros (precision, width)
+#include <atlbase.h>    // Necessário para utilizar o macro "_T"
 #include <iostream>
 #include <ObjIdl.h>
 #include "opcda.h"
@@ -30,7 +30,6 @@ typedef unsigned *CAST_LPDWORD;
 
 HANDLE hSlot;
 LPTSTR SlotName = (LPTSTR)TEXT("\\\\.\\mailslot\\sample_mailslot");
-
 
 #define	LISTENPORT "3980"
 #define TAMBUF  "20"
@@ -70,51 +69,50 @@ float temperatureSetPoint,
 			
 UINT OPC_DATA_TIME = RegisterClipboardFormat(_T("OPCSTMFORMATDATATIME"));
 
-DWORD WINAPI OPCClient();	    // declaração da função
-DWORD WINAPI SocketServer();	// declaração da função
+DWORD WINAPI OPCClient();	    // Declaração da função
+DWORD WINAPI SocketServer();	// Declaração da função
 int increaseSequenceNumber(int previousSequenceNumber);
 BOOL ReadSlot();
 void parseMessage(char* msg);
 bool GenerateVar(VARIANT* var, VARTYPE var_type, void* var_value);
 
-
-
 int main(int argc, char **argv) {
 	DWORD dwReturn,
-		dwExitCode,
-		dwThreadId;
+		  dwExitCode,
+		  dwThreadId;
+
 	hMutex = CreateMutex(NULL, FALSE, (LPCWSTR)"DataMutex");
 	hEvent = CreateEvent(NULL, TRUE, FALSE, (LPCWSTR)"ParametersReceiverEvent");
 	hSlot = CreateMailslot(SlotName,
-		0,                             // no maximum message size 
-		MAILSLOT_WAIT_FOREVER,         // no time-out for operations 
-		NULL); // default security
+		0,                             // Sem tamanho máximo de mensagem 
+		MAILSLOT_WAIT_FOREVER,         // Sem timeout para operações 
+		NULL);						   // Segurança padrão
 
 	if (hSlot == INVALID_HANDLE_VALUE)
 	{
-		printf("CreateMailslot failed with %d\n", GetLastError());
+		printf("CreateMailslot falhou com %d\n", GetLastError());
 	}
 
 	hOut = GetStdHandle(STD_OUTPUT_HANDLE);
 	if (hOut == INVALID_HANDLE_VALUE)
-		printf("Erro ao obter handle para a saída da console\n");
+		printf("Erro ao obter handle para a saída do console\n");
 
 	hOPCClientThread = (HANDLE)_beginthreadex(
 		NULL,
 		0,
-		(CAST_FUNCTION)OPCClient,	// casting necessário
+		(CAST_FUNCTION)OPCClient,	// Casting necessário
 		NULL,
 		0,
-		(CAST_LPDWORD)&dwThreadId	// casting necessário
+		(CAST_LPDWORD)&dwThreadId	// Casting necessário
 	);
 
 	hSockerServerThread = (HANDLE)_beginthreadex(
 		NULL,
 		0,
-		(CAST_FUNCTION)SocketServer,	// casting necessário
+		(CAST_FUNCTION)SocketServer,	// Casting necessário
 		NULL,
 		0,
-		(CAST_LPDWORD)&dwThreadId	// casting necessário
+		(CAST_LPDWORD)&dwThreadId		// Casting necessário
 	);
 
 	const HANDLE pointerHandles[2] = { hOPCClientThread, hSockerServerThread};
@@ -123,7 +121,7 @@ int main(int argc, char **argv) {
 	CloseHandle(hMutex);
 
 	dwReturn = GetExitCodeThread(hOPCClientThread, &dwExitCode);
-	CloseHandle(hOPCClientThread);	// apaga referência ao objeto
+	CloseHandle(hOPCClientThread);	// Apaga referência ao objeto
 	dwReturn = GetExitCodeThread(hSockerServerThread, &dwExitCode);
 	CloseHandle(hSockerServerThread);	
 	
@@ -132,73 +130,68 @@ int main(int argc, char **argv) {
 
 DWORD WINAPI OPCClient() {
 
-	IOPCServer* pIOPCServer = NULL;   //pointer to IOPServer interface
-	IOPCItemMgt* pDataIOPCItemMgt = NULL; //pointer to IOPCItemMgt interface
-	IOPCItemMgt* pParametersIOPCItemMgt = NULL; //pointer to IOPCItemMgt interface
+	IOPCServer* pIOPCServer = NULL;					 // Ponteiro para interface IOPServer
+	IOPCItemMgt* pDataIOPCItemMgt = NULL;		  	 // Ponteiro para interface IOPCItemMgt
+	IOPCItemMgt* pParametersIOPCItemMgt = NULL;		 // Ponteiro para interface IOPCItemMgt
 
-	OPCHANDLE hServerGroup[2];    // server handle to the group
-	OPCHANDLE hServerItem[7];  // server handle to the item
+	OPCHANDLE hServerGroup[2];			// Handle do servidor para o grupo
+	OPCHANDLE hServerItem[7];			// Handle do servidor para o item
 
 	DWORD dwReturn,
-		dwExitCode,
-		dwThreadId;
+		  dwExitCode,
+		  dwThreadId;
 
 	char buf[100];
 	VARIANT tempVariant;
 	VariantInit(&tempVariant);
 
-	// Have to be done before using microsoft COM library:
+	// Necessário antes de utilizar a biblioteca COM da Microsoft
 	SetConsoleTextAttribute(hOut, WHITE);
-	printf("Initializing the COM environment...\n");
+	printf("Iniciando ambiente COM...\n");
 	CoInitialize(NULL);
 
-	// Let's instantiante the IOPCServer interface and get a pointer of it:
-	printf("Instantiating the MATRIKON OPC Server for Simulation...\n");
+	// Instancia a interface IOPCServer e pega o apontador para a mesma
+	printf("Instanciando Servidor OPC da Matrikon para simulacao...\n");
 	pIOPCServer = InstantiateServer();
 
-	// Add the OPC group the OPC server and get an handle to the IOPCItemMgt
-	//interface:
-	printf("Adding a group in the INACTIVE state for the moment...\n");
+	// Adiciona o grupo e pega o handle para interface IOPCItemMgt
+	printf("Adicionando grupo com estado INACTIVE...\n");
 	AddTheGroup(pIOPCServer, pDataIOPCItemMgt,  pParametersIOPCItemMgt, hServerGroup);
 
-	// Add the OPC item. First we have to convert from wchar_t* to char*
-	// in order to print the item name in the console.
+	// Adiciona o item
 	AddAllItems(pDataIOPCItemMgt, pParametersIOPCItemMgt, hServerItem);
 	
 	int bRet;
 	MSG msg;
 	int ticks1, ticks2;
 	
-	// Establish a callback asynchronous read by means of the IOPCDataCallback
-	// (OPC DA 2.0) method. We first instantiate a new SOCDataCallback object and
-	// adjusts its reference count, and then call a wrapper function to
-	// setup the callback.
-	IConnectionPoint* pIConnectionPoint = NULL; //pointer to IConnectionPoint Interface
+	// Utiliza o método IOPCDataCallback para iniciar uma leitura assíncrona via callback
+	// Primeiro instanciamos um objeto SOCDataCallback e ajustamos seu contador de referências.
+	// Depois chamamos uma função wrapper para preparar o callback
+	IConnectionPoint* pIConnectionPoint = NULL;			// Apontador para interface IConnectionPoint
 	DWORD dwCookie = 0;
 	SOCDataCallback* pSOCDataCallback = new SOCDataCallback();
 	pSOCDataCallback->AddRef();
 
-	printf("Setting up the IConnectionPoint callback connection...\n");
+	printf("Preparando a conexao callback IConnectionPoint...\n");
 	SetDataCallback(pDataIOPCItemMgt, pSOCDataCallback, pIConnectionPoint, &dwCookie);
 
-	// Change the group to the ACTIVE state so that we can receive the
-	// server´s callback notification
-	printf("Changing the group state to ACTIVE...\n");
+	// Altera o grupo para o estado ACTIVE para que possa receber as notificações de callback do servidor
+	printf("Alterando o estado do grupo para ACTIVE...\n");
 	SetGroupActive(pDataIOPCItemMgt);
 
-	// Enter again a message pump in order to process the server´s callback
-	// notifications, for the same reason explained before.
+	// Loop para processar as notificações de callback do servidor
 	ticks1 = GetTickCount();
 	do {
 		
 		bRet = GetMessage(&msg, NULL, 0, 0);
 		if (!bRet) {
 			SetConsoleTextAttribute(hOut, HLRED);
-			printf("Failed to get windows message! Error code = %d\n", GetLastError());
+			printf("Falha ao recuperar mensagem! Codigo de erro = %d\n", GetLastError());
 			exit(0);
 		}
-		TranslateMessage(&msg); // This call is not really needed ...
-		DispatchMessage(&msg);  // ... but this one is!
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);
 		ReadSlot();
 		int st = WaitForSingleObject(hEvent, 100);
 		if (st == WAIT_OBJECT_0) {
@@ -214,19 +207,17 @@ DWORD WINAPI OPCClient() {
 			ReleaseMutex(hMutex);
 		}
 		ResetEvent(hEvent);
-		
-		
 	} while (true);
 
-	// Cancel the callback and release its reference
+	// Cancela o callback e libera a referência
 	SetConsoleTextAttribute(hOut, WHITE);
-	printf("Cancelling the IOPCDataCallback notifications...\n");
+	printf("Cancelando notificacoes IOPCDataCallback...\n");
 	CancelDataCallback(pIConnectionPoint, dwCookie);
 	//pIConnectionPoint->Release();
 	pSOCDataCallback->Release();
 
-	// Remove the OPC item:
-	printf("Removing the OPC item...\n");
+	// Remove o item
+	printf("Removendo item...\n");
 	for (int i = 0; i < 4; i++)	{
 		RemoveItem(pDataIOPCItemMgt, hServerItem[i]);
 	}
@@ -234,22 +225,22 @@ DWORD WINAPI OPCClient() {
 		RemoveItem(pParametersIOPCItemMgt, hServerItem[i]);
 	}
 
-	// Remove the OPC group:
+	// Remove o grupo:
 	SetConsoleTextAttribute(hOut, WHITE);
-	printf("Removing the OPC group object...\n");
+	printf("Removendo grupo...\n");
 	pDataIOPCItemMgt->Release();
 	pParametersIOPCItemMgt->Release();
 	RemoveGroup(pIOPCServer, hServerGroup[0]);
 	RemoveGroup(pIOPCServer, hServerGroup[1]);
 
-	// release the interface references:
+	// Libera a referência da interface
 	SetConsoleTextAttribute(hOut, WHITE);
-	printf("Removing the OPC server object...\n");
+	printf("Removendo servidor OPC...\n");
 	pIOPCServer->Release();
 
-	//close the COM library:
+	// Encerra o ambiente COM
 	SetConsoleTextAttribute(hOut, WHITE);
-	printf("Releasing the COM environment...\n");
+	printf("Encerrando ambiente COM...\n");
 	CoUninitialize();
 
 	return 0;
@@ -257,30 +248,32 @@ DWORD WINAPI OPCClient() {
 
 DWORD WINAPI SocketServer() {
 	WSADATA     wsaData;
-	SOCKET serverSocket;
-	SOCKET clientSocket;
+
+	SOCKET serverSocket,
+		   clientSocket;
+
 	PADDRINFOA result = NULL;
 	fd_set set;
 	struct timeval timeout;
-
-	
 
 	std::ostringstream ss;
 
 	ADDRINFOA hints;
 	int status, response;
-	char code[3], oldSeqNumber[7], resPressure[10], resLevel[10];
+	char code[3],
+		 oldSeqNumber[7],
+		 resPressure[10],
+		 resLevel[10];
 	char buffer[BUFFERLEN];
 	
 	status = WSAStartup(MAKEWORD(2, 2), &wsaData);
 	if (status < 0) {
 		SetConsoleTextAttribute(hOut, HLRED);
-		printf("Erro na inicizalização do ambiente WSA: %d\n", status);
+		printf("Erro na inicizalizacao do ambiente WSA: %d\n", status);
 		return EXITERROR;
-	
 	}
 
-	//Inicializando Estrutura do socket
+	// Inicializa a estrutura do socket
 	ZeroMemory(&hints, sizeof(hints));
 	hints.ai_family = AF_INET;
 	hints.ai_socktype = SOCK_STREAM;
@@ -294,7 +287,7 @@ DWORD WINAPI SocketServer() {
 	if (serverSocket == INVALID_SOCKET) {
 		status = WSAGetLastError();
 		SetConsoleTextAttribute(hOut, HLRED);
-		printf("Erro na criação do socket: %d\n", status);
+		printf("Erro na criacao do socket: %d\n", status);
 		WSACleanup();
 		return EXITERROR;
 	}
@@ -304,7 +297,7 @@ DWORD WINAPI SocketServer() {
 	if (status == SOCKET_ERROR) {
 		status = WSAGetLastError();
 		SetConsoleTextAttribute(hOut, HLRED);
-		printf("Erro na vinculação do socket: %d\n", status);
+		printf("Erro na vinculacao do socket: %d\n", status);
 		WSACleanup();
 		return EXITERROR;
 	}
@@ -322,12 +315,12 @@ DWORD WINAPI SocketServer() {
 		return EXITERROR;
 	}
 
-	printf("Servidor Esperando conexao\n");
+	printf("Servidor esperando conexao\n");
 	clientSocket = accept(serverSocket,NULL,NULL);
 	if (clientSocket == INVALID_SOCKET) {
 		status = WSAGetLastError();
 		SetConsoleTextAttribute(hOut, HLRED);
-		printf("Erro na função accept do socket: %d\n", status);
+		printf("Erro na funcao accept do socket: %d\n", status);
 		closesocket(serverSocket);
 		WSACleanup();
 		return EXITERROR;
@@ -335,8 +328,8 @@ DWORD WINAPI SocketServer() {
 
 	
 	do {
-		FD_ZERO(&set); /* clear the set */
-		FD_SET(clientSocket, &set); /* add our file descriptor to the set */
+		FD_ZERO(&set);						// Limpa o set
+		FD_SET(clientSocket, &set);			// Adiciona o descritor de arquivo ao set
 		timeout.tv_sec = 3000;
 		timeout.tv_usec = 0;
 		int rv = select(clientSocket, &set, NULL, NULL, &timeout); 
@@ -351,7 +344,8 @@ DWORD WINAPI SocketServer() {
 		else {
 			response = recv(clientSocket, buffer, BUFFERLEN, 0);
 
-			if (response > 0) { // recebeu alguma mensagem
+			// Checa se recebeu alguma mensagem
+			if (response > 0) { 
 				if (response < BUFFERLEN)
 					buffer[response] = '\0';
 				strncpy_s(code, buffer, 2);
@@ -388,8 +382,6 @@ DWORD WINAPI SocketServer() {
 						WSACleanup();
 						return EXITERROR;
 					}
-
-
 				}
 				else if (strcmp(code, PARAMETERSMSG) == 0) {
 
@@ -416,7 +408,6 @@ DWORD WINAPI SocketServer() {
 						WSACleanup();
 						return EXITERROR;
 					}
-
 				}
 				else {
 					printf("Strcmp deu errado");
@@ -430,7 +421,7 @@ DWORD WINAPI SocketServer() {
 				SetConsoleTextAttribute(hOut, HLRED);
 				printf("Error no recebimento dos dados: %d\n", WSAGetLastError());
 				SetConsoleTextAttribute(hOut, WHITE);
-				printf("Esperando Conexao...\n");
+				printf("Esperando conexao...\n");
 				status = listen(serverSocket, 3);
 				if (status == SOCKET_ERROR) {
 					status = WSAGetLastError();
@@ -440,11 +431,11 @@ DWORD WINAPI SocketServer() {
 					WSACleanup();
 					return EXITERROR;
 				}
-				printf("Esperando Conexao...\n");
+				printf("Esperando conexao...\n");
 				clientSocket = accept(serverSocket, NULL, NULL);
 				if (clientSocket == INVALID_SOCKET) {
 					status = WSAGetLastError();
-					printf("Erro na função accept do socket: %d\n", status);
+					printf("Erro na funcao accept do socket: %d\n", status);
 					closesocket(serverSocket);
 					WSACleanup();
 					return EXITERROR;
@@ -456,7 +447,7 @@ DWORD WINAPI SocketServer() {
 		
 	} while (response > 0);
 
-	// Desabilitando o Socket
+	// Desabilita o socket
 	status = shutdown(clientSocket, SD_SEND);
 	if (status == SOCKET_ERROR) {
 		printf("Shutdown falhou: %d\n", WSAGetLastError());
@@ -465,7 +456,7 @@ DWORD WINAPI SocketServer() {
 		return EXITERROR;
 	}
 
-	// cleanup
+	// Fecha os sockets 
 	closesocket(clientSocket);
 	closesocket(serverSocket);
 	WSACleanup();
@@ -480,15 +471,15 @@ int increaseSequenceNumber(int previousSequenceNumber) {
 		return previousSequenceNumber + 1;
 }
 
-
-
 BOOL ReadSlot()
 {
-	DWORD cbMessage, cMessage, cbRead;
+	DWORD cbMessage,
+		  cMessage,
+		  cbRead,
+		  cAllMessages;
 	BOOL fResult;
 	LPTSTR lpszBuffer;
 	TCHAR achID[80];
-	DWORD cAllMessages;
 	HANDLE hEvent;
 	OVERLAPPED ov;
 
@@ -501,74 +492,75 @@ BOOL ReadSlot()
 	ov.OffsetHigh = 0;
 	ov.hEvent = hEvent;
 
-	fResult = GetMailslotInfo(hSlot, // mailslot handle 
-		(LPDWORD)NULL,               // no maximum message size 
-		&cbMessage,                   // size of next message 
-		&cMessage,                    // number of messages 
-		(LPDWORD)NULL);              // no read time-out 
+	fResult = GetMailslotInfo(hSlot,		 // Handle para o mailslot 
+			  (LPDWORD)NULL,                 // Sem tamanho máximo de mensagem 
+		  	  &cbMessage,                    // Tamanho da próxima mensagem 
+			  &cMessage,                     // Número de mensagens 
+			  (LPDWORD)NULL);                // Sem timeout de leitura 
 
 	if (!fResult)
 	{
-		printf("GetMailslotInfo failed with %d.\n", GetLastError());
+		printf("GetMailslotInfo falhou com %d.\n", GetLastError());
 		return FALSE;
 	}
 
 	if (cbMessage == MAILSLOT_NO_MESSAGE)
 	{
-		printf("Waiting for a message...\n");
+		printf("Aguardando mensagem...\n");
 		return TRUE;
 	}
 
 	cAllMessages = cMessage;
 
-	while (cMessage != 0)  // retrieve all messages
+	// Loop para recuperar todas as mensagens
+	while (cMessage != 0)
 	{
-		// Create a message-number string. 
-
+		// Cria string com o número de sequência da mensagem 
 		StringCchPrintf((LPTSTR)achID,
 			80,
-			TEXT("\nMessage #%d of %d\n"),
+			TEXT("\Mensagem #%d de %d\n"),
 			cAllMessages - cMessage + 1,
 			cAllMessages);
 
-		// Allocate memory for the message. 
-
+		// Aloca memória para a mensagem
 		lpszBuffer = (LPTSTR)GlobalAlloc(GPTR,
 			lstrlen((LPTSTR)achID) * sizeof(TCHAR) + cbMessage);
+
 		if (NULL == lpszBuffer)
 			return FALSE;
+
 		lpszBuffer[0] = '\0';
 
 		fResult = ReadFile(hSlot,
-			lpszBuffer,
-			cbMessage,
-			&cbRead,
-			&ov);
+				  lpszBuffer,
+				  cbMessage,
+				  &cbRead,
+				  &ov);
 
 		if (!fResult)
 		{
-			printf("ReadFile failed with %d.\n", GetLastError());
+			printf("ReadFile falhou com %d.\n", GetLastError());
 			GlobalFree((HGLOBAL)lpszBuffer);
 			return FALSE;
 		}
 		WaitForSingleObject(hMutex, INFINITE);
 		SetConsoleTextAttribute(hOut, PINK);
-		printf("Cliente OPC - Mensagem recebida de Dados: %s\n\n", lpszBuffer);
+		printf("Cliente OPC - Mensagem de dados recebida: %s\n\n", lpszBuffer);
 		char* msg = (char*)lpszBuffer;
 		parseMessage(msg);
 		ReleaseMutex(hMutex);
 	
 		GlobalFree((HGLOBAL)lpszBuffer);
 
-		fResult = GetMailslotInfo(hSlot,  // mailslot handle 
-			(LPDWORD)NULL,               // no maximum message size 
-			&cbMessage,                   // size of next message 
-			&cMessage,                    // number of messages 
-			(LPDWORD)NULL);              // no read time-out 
+		fResult = GetMailslotInfo(hSlot,		// Handle para o mailslot  
+				  (LPDWORD)NULL,                // Sem tamanho máximo de mensagem  
+				  &cbMessage,                   // Tamanho da próxima mensagem 
+				  &cMessage,                    // Número de mensagens 
+				  (LPDWORD)NULL);               // Sem timeout de leitura 
 
 		if (!fResult)
 		{
-			printf("GetMailslotInfo failed (%d)\n", GetLastError());
+			printf("GetMailslotInfo falhou com (%d)\n", GetLastError());
 			return FALSE;
 		}
 	}
@@ -578,7 +570,6 @@ BOOL ReadSlot()
 
 void parseMessage(char* msg) {
 	char* part = strtok(msg, "/");
-	
 	
 	tubePressure = atoi(part);
 
@@ -594,9 +585,9 @@ void parseMessage(char* msg) {
 }
 
 bool GenerateVar(VARIANT* var, VARTYPE var_type, void* var_value){
-	
-	var->vt = var_type;                //Assign var_type
-	//Typecast from void* to the specified type*, and them dereferenciate.
+	// Atribui var_type
+	var->vt = var_type;                
+	// Typecast de void* pra ponteiro do tipo específico e depois desreferencia
 	switch (var_type & ~VT_ARRAY){
 		case VT_I1:
 			var->iVal = *static_cast<char*>(var_value);	break;

@@ -147,7 +147,7 @@ void AddAllItems(IOPCItemMgt* pDataIOPCItemMgt, IOPCItemMgt* pParametersIOPCItem
 		/*wReserved*/0
 	};
 
-	//Add Result:
+	// Add Result:
 	OPCITEMRESULT* pAddResult = NULL;
 	HRESULT* pErrors = NULL;
 
@@ -192,12 +192,12 @@ void RemoveItem(IOPCItemMgt* pIOPCItemMgt, OPCHANDLE hServerItem)
 	OPCHANDLE hServerArray[1];
 	hServerArray[0] = hServerItem;
 
-	//Remove the item:
+	// Remove the item:
 	HRESULT* pErrors; // to store error code(s)
 	HRESULT hr = pIOPCItemMgt->RemoveItems(1, hServerArray, &pErrors);
 	_ASSERT(!hr);
 
-	//release memory allocated by the server:
+	// release memory allocated by the server:
 	CoTaskMemFree(pErrors);
 	pErrors = NULL;
 }
@@ -227,7 +227,7 @@ void writeItem(IOPCItemMgt* pIOPCItemMgt, OPCHANDLE hServerItem, VARIANT tempVar
 
 	_ASSERT(!hr);
 
-	//Release memeory allocated by the OPC server:
+	// Release memory allocated by the OPC server:
 	CoTaskMemFree(pErrors);
 	pErrors = NULL;
 

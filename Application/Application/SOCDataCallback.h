@@ -13,7 +13,6 @@
 #ifndef _SOCDATACALLBACK_H
 #define _SOCDATACALLBACK_H
 
-// **************************************************************************
 class SOCDataCallback : public IOPCDataCallback
 	{
 	public:

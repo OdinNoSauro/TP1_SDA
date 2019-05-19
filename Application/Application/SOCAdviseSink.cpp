@@ -33,7 +33,7 @@ HRESULT STDMETHODCALLTYPE SOCAdviseSink::QueryInterface (REFIID riid, LPVOID *pp
 	else if (riid == IID_IAdviseSink)
 		*ppv = (IAdviseSink*) this;
 	else
-		return (E_NOINTERFACE); //unsupported interface
+		return (E_NOINTERFACE); // unsupported interface
 
 	// Success
 	AddRef ();                  

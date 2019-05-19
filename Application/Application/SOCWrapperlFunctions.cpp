@@ -1,5 +1,5 @@
 //
-// C++ module with additional wrapper functions to extend CERN´s
+// C++ module with additional wrapper functions to extend CERNï¿½s
 // "Simple OPC Client" functionalities in order to allow OPC server
 // callbacks (both OPC DA 1.0 IDataAdviseSink and OPC DA 2.0
 // IOPCDataCallback.
@@ -34,7 +34,7 @@ void SetGroupActive(IUnknown* pGroupIUnknown)
 	// unchanged we pass NULL pointers to them as suggested by the OPC DA Spec.
 	hr = pIOPCGroupStateMgt->SetState(
 		    NULL,                // *pRequestedUpdateRate
-			&RevisedUpdateRate,  // *pRevisedUpdateRate - can´t be NULL
+			&RevisedUpdateRate,  // *pRevisedUpdateRate - canï¿½t be NULL
 			&ActiveFlag,		 // *pActive
 			NULL,				 // *pTimeBias
 			NULL,				 // *pPercentDeadband
@@ -113,7 +113,7 @@ void CancelAdviseSink(IDataObject *pIDataObject,  DWORD tkAsyncConnection)
 //
 // Luiz T. S. Mendes - 07/09/2011
 //
-// Correções apontadas pelos alunos Rafael Tupynambá Dutra e Tarcísio Ribeiro
+// Correï¿½ï¿½es apontadas pelos alunos Rafael Tupynambï¿½ Dutra e Tarcï¿½sio Ribeiro
 // Oliveira Cortes em 19/05/2012
 //
 bool VarToStr (VARIANT pvar, char *buffer)
@@ -150,12 +150,12 @@ bool VarToStr (VARIANT pvar, char *buffer)
 			//RAFAEL sprintf(buffer, "%06.1Lf",   pvar.dblVal);	break;
 		case VT_BSTR:
 			//ORIGINAL sprintf(buffer, "%s",    pvar.bstrVal);	break;
-			//Modificação abaixo para o VS Community
+			//Modificaï¿½ï¿½o abaixo para o VS Community
 			sprintf(buffer, "%ls", pvar.bstrVal);	break;
 			//RAFAEL sprintf(buffer, "%6.6s",    pvar.bstrVal);	break;
 		default:
 			//sprintf(buffer, "%s", NULL);
-			//Modificação abaixo para o VS Community
+			//Modificaï¿½ï¿½o abaixo para o VS Community
 			sprintf(buffer, "%s", (char *) NULL);
 			vReturn = false;
 			break;
@@ -177,7 +177,7 @@ void SetDataCallback(
 	IConnectionPointContainer* pIConnPtCont = NULL; //pointer to IConnectionPointContainer
 	                                                //interface
         
-	//Get a pointer to the IConnectionPointContainer interface:
+	// Get a pointer to the IConnectionPointContainer interface:
     hr = pGroupIUnknown->QueryInterface(__uuidof(pIConnPtCont), (void**) &pIConnPtCont);
 	if (hr != S_OK){
 		printf ("Could not obtain a pointer to IConnectionPointContainer. Error = %x\n",
@@ -190,12 +190,11 @@ void SetDataCallback(
 	hr = pIConnPtCont->FindConnectionPoint(IID_IOPCDataCallback, &pIConnectionPoint);
 	if (hr != S_OK) {
 		printf ("Failed call to FindConnectionPoint. Error = %x\n", hr);
-		//*ptkAsyncConnection = 0;
 		return;
 	}
 
 	// Now set up the Connection Point.
-	// TO BE DONE: in Kepware´s code the IOPCDataCallback object is instantiated
+	// TO BE DONE: in Kepwareï¿½s code the IOPCDataCallback object is instantiated
 	// here, as a consequence of the FindConnectionPoint success. It makes sense,
 	// for if not we would have instantiated it unnecessarly.
 	hr = pIConnectionPoint->Advise(pSOCDataCallback, pdwCookie);

@@ -21,8 +21,6 @@ SOCDataCallback::SOCDataCallback () : m_cnRef (0){
 		hMutex = CreateMutex(NULL, FALSE, (LPCWSTR)"dMutex");
 		hSlot = CreateFile(Slot, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 		
-		
-
 		if (hSlot == INVALID_HANDLE_VALUE)
 		{
 			printf("CreateMailslot failed with %d\n", GetLastError());
@@ -31,9 +29,9 @@ SOCDataCallback::SOCDataCallback () : m_cnRef (0){
 }
 //	Destructor
 SOCDataCallback::~SOCDataCallback ()
-	{
+{
 	
-	}
+}
 
 // IUnknown methods
 HRESULT STDMETHODCALLTYPE SOCDataCallback::QueryInterface (REFIID riid, LPVOID *ppv)
